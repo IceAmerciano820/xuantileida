@@ -269,20 +269,19 @@ function generateTrendData(timeRange: string, items: Array<{ heatScore: number; 
   return points;
 }
 
-/* ── LLM angle generation ── */
+/* ── LLM angle generation (batched) ── */
 
-async function generateAngles(
+const ANGLE_BATCH_SIZE = 15;
+
+async function generateAnglesForBatch(
   keyword: string,
-  topics: Array<{ title: string; snippet: string; source: string }>
+  topics: Array<{ title: string; snippet: string; source: string }>,
+  llmClient: LLMClient
 ): Promise<string[][]> {
-  const customHeaders: Record<string, string> = {};
-  const llmConfig = new LLMConfig();
-  const llmClient = new LLMClient(llmConfig, customHeaders);
-
   const topicsDescription = topics
     .map(
       (t, i) =>
-        `${i + 1}. [${t.source}] ${t.title}\n   摘要: ${t.snippet.substring(0, 150)}`
+        `${i + 1}. [${t.source}] ${t.title}\n   摘要: ${t.snippet.substring(0, 120)}`
     )
     .join("\n");
 
@@ -331,29 +330,49 @@ ${topicsDescription}
       }
     }
   } catch (error) {
-    console.error("LLM angle generation failed:", error);
+    console.error("LLM angle generation failed for batch:", error);
   }
 
-  // Fallback
-  return topics.map((t) => {
-    const angles: string[] = [];
-    const title = t.title.toLowerCase();
-    if (title.includes("教程") || title.includes("如何") || title.includes("怎么")) {
-      angles.push(`以「${keyword}新手指南」为主题，制作一篇保姆级实操教程`);
-      angles.push(`拍摄一支「${keyword}避坑指南」短视频，分享常见误区`);
-    } else if (title.includes("排行") || title.includes("推荐") || title.includes("测评")) {
-      angles.push(`做一期「${keyword}红黑榜」对比评测内容`);
-      angles.push(`以个人体验为切入点，分享真实使用感受`);
-    } else if (title.includes("趋势") || title.includes("未来") || title.includes("预测")) {
-      angles.push(`深度分析「${keyword}未来趋势」，结合数据做预判`);
-      angles.push(`制作「行业现状」信息图/长图内容`);
-    } else {
-      angles.push(`围绕「${keyword}」制作一篇观点鲜明的评论文章`);
-      angles.push(`以个人经历切入，分享引发共鸣的故事`);
-      angles.push(`做一期「${keyword}入门到进阶」系列内容规划`);
-    }
-    return angles.slice(0, 3);
-  });
+  // Fallback for this batch
+  return topics.map((t) => generateFallbackAngles(t.title, keyword));
+}
+
+function generateFallbackAngles(title: string, keyword: string): string[] {
+  const angles: string[] = [];
+  const lowerTitle = title.toLowerCase();
+  if (lowerTitle.includes("教程") || lowerTitle.includes("如何") || lowerTitle.includes("怎么")) {
+    angles.push(`以「${keyword}新手指南」为主题，制作一篇保姆级实操教程`);
+    angles.push(`拍摄一支「${keyword}避坑指南」短视频，分享常见误区`);
+  } else if (lowerTitle.includes("排行") || lowerTitle.includes("推荐") || lowerTitle.includes("测评")) {
+    angles.push(`做一期「${keyword}红黑榜」对比评测内容`);
+    angles.push(`以个人体验为切入点，分享真实使用感受`);
+  } else if (lowerTitle.includes("趋势") || lowerTitle.includes("未来") || lowerTitle.includes("预测")) {
+    angles.push(`深度分析「${keyword}未来趋势」，结合数据做预判`);
+    angles.push(`制作「行业现状」信息图/长图内容`);
+  } else {
+    angles.push(`围绕「${keyword}」制作一篇观点鲜明的评论文章`);
+    angles.push(`以个人经历切入，分享引发共鸣的故事`);
+    angles.push(`做一期「${keyword}入门到进阶」系列内容规划`);
+  }
+  return angles.slice(0, 3);
+}
+
+async function generateAngles(
+  keyword: string,
+  topics: Array<{ title: string; snippet: string; source: string }>
+): Promise<string[][]> {
+  const customHeaders: Record<string, string> = {};
+  const llmConfig = new LLMConfig();
+  const llmClient = new LLMClient(llmConfig, customHeaders);
+
+  // Process in batches to avoid LLM timeout/quality degradation
+  const allAngles: string[][] = [];
+  for (let i = 0; i < topics.length; i += ANGLE_BATCH_SIZE) {
+    const batch = topics.slice(i, i + ANGLE_BATCH_SIZE);
+    const batchAngles = await generateAnglesForBatch(keyword, batch, llmClient);
+    allAngles.push(...batchAngles);
+  }
+  return allAngles;
 }
 
 /* ── Main handler ── */
@@ -374,7 +393,7 @@ export async function POST(request: NextRequest) {
     const resolvedTimeRange = validTimeRanges.includes(timeRange as typeof validTimeRanges[number])
       ? (timeRange as string)
       : "1d";
-    const maxCount = Math.min(Math.max(count || 10, 1), 50);
+    const maxCount = Math.min(Math.max(count || 50, 1), 50);
 
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
@@ -391,7 +410,7 @@ export async function POST(request: NextRequest) {
     const searchPromises = searchQueries.map((query, idx) =>
       searchClient.advancedSearch(query, {
         timeRange: resolvedTimeRange,
-        count: 15,
+        count: 20,
         needSummary: false,
       }).catch((err: unknown) => {
         console.error(`Search failed for query ${idx}:`, err);

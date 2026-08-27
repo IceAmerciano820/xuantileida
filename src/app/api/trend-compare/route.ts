@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
           `${kw.trim()} 热点 热门`,
           {
             timeRange: resolvedTimeRange,
-            count: 10,
+            count: 20,
             needSummary: false,
           }
         );

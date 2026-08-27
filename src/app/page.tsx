@@ -59,7 +59,7 @@ const HOT_KEYWORDS = ["AI工具", "副业", "搞钱", "减肥", "护肤", "职�
 const HISTORY_KEY = "hotspot_search_history";
 const FAVORITES_KEY = "hotspot_favorites";
 const MAX_HISTORY = 10;
-const REQUEST_COUNT = 30;
+const REQUEST_COUNT = 50;
 const CACHE_TTL = 5 * 60 * 1000;
 const APP_VERSION = "v2.0.0";
 
@@ -98,7 +98,7 @@ function InnerApp() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [generateTarget, setGenerateTarget] = useState<TopicAngle | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [displayCount, setDisplayCount] = useState(10);
+  const [displayCount, setDisplayCount] = useState(20);
   const [showHotOnly, setShowHotOnly] = useState(false);
   // P2-3: Trend compare state
   const [compareKeywords, setCompareKeywords] = useState<string[]>([]);
@@ -171,7 +171,7 @@ function InnerApp() {
     if (cacheRef.current && cacheRef.current.key === cacheKey && now - cacheRef.current.timestamp < CACHE_TTL) {
       setResults(cacheRef.current.data);
       setSearchedKeyword(trimmed);
-      setDisplayCount(10);
+      setDisplayCount(20);
       setPlatformFilter("全部");
       setShowHotOnly(false);
       return;
@@ -180,7 +180,7 @@ function InnerApp() {
     setLoading(true);
     setResults(null);
     setSearchedKeyword(trimmed);
-    setDisplayCount(10);
+    setDisplayCount(20);
     setPlatformFilter("全部");
     setShowHotOnly(false);
     setShowMobileMenu(false);
@@ -322,7 +322,7 @@ function InnerApp() {
 
   // P1-2: Load more
   const handleLoadMore = useCallback(() => {
-    setDisplayCount(prev => prev + 10);
+    setDisplayCount(prev => prev + 20);
   }, []);
 
   // P0-2: Favorites by URL
