@@ -449,26 +449,20 @@ export default function Home() {
 
         {/* Network Error */}
         {networkError && !loading && (
-          <div className="rounded-2xl border border-[rgba(255,77,106,0.15)] bg-[rgba(255,77,106,0.05)] p-4 text-center backdrop-blur-xl">
-            <div className="mb-2 flex items-center justify-center gap-2">
-              <svg className="h-4 w-4 text-[#FF4D6A]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
-              <p className="text-sm font-medium text-[#FF4D6A]">{networkError}</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="text-xs text-[#FF4D6A]/70 underline decoration-[#FF4D6A]/20 underline-offset-2 transition-colors hover:text-[#FF4D6A]"
-            >
-              点击重试
-            </button>
-          </div>
+          <EmptyState
+            variant="error"
+            message={networkError}
+            onRetry={handleSubmit}
+          />
         )}
 
         {/* No Results */}
         {hasNoResults && !loading && (
-          <EmptyState variant="no-results" message={results.message} />
+          <EmptyState
+            variant="no-results"
+            message={results.message}
+            onKeywordClick={handleKeywordClick}
+          />
         )}
 
         {/* Initial Empty State */}
