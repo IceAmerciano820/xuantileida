@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import { useTheme } from "@/hooks/use-theme";
 
 interface SearchInputProps {
   value: string;
@@ -12,34 +13,22 @@ interface SearchInputProps {
 
 export function SearchInput({ value, onChange, onSubmit, loading, error }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { isDark } = useTheme();
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      onSubmit();
-    }
+    if (e.key === "Enter") { e.preventDefault(); onSubmit(); }
   };
 
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2.5 sm:flex-row">
         <div className="relative min-w-0 flex-1">
-          <svg
-            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8B92A8]"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-            />
+          <svg className={`pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 ${isDark ? "text-[#8B92A8]" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
           <input
             ref={inputRef}
@@ -49,14 +38,24 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
             onKeyDown={handleKeyDown}
             placeholder="输入关键词，如：搞钱、副业、AI工具..."
             disabled={loading}
-            className="h-11 w-full rounded-[10px] border border-[rgba(0,212,255,0.12)] bg-[#12162A] pl-10 pr-4 text-sm text-white placeholder:text-[#8B92A8]/60 outline-none transition-all focus:border-[#00D4FF]/50 focus:shadow-[0_0_12px_rgba(0,212,255,0.1)] disabled:cursor-not-allowed disabled:opacity-50"
+            className={`h-11 w-full rounded-[10px] border pl-10 pr-4 text-sm outline-none transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+              isDark
+                ? "border-[rgba(0,212,255,0.12)] bg-[#12162A] text-white placeholder:text-[#8B92A8]/60 focus:border-[#00D4FF]/50 focus:shadow-[0_0_12px_rgba(0,212,255,0.1)]"
+                : "border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#00B4D8]/50 focus:shadow-[0_0_12px_rgba(0,180,216,0.1)]"
+            }`}
           />
         </div>
         <button
           type="button"
           onClick={onSubmit}
           disabled={loading}
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] bg-[#00D4FF] px-5 text-sm font-semibold text-[#0A0E1A] transition-all hover:shadow-[0_0_16px_rgba(0,212,255,0.3)] hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:bg-[#00D4FF]/30 disabled:shadow-none disabled:scale-100"
+          className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] px-5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:scale-100 ${
+            loading
+              ? "bg-[#00D4FF]/30 text-[#0A0E1A]/50 shadow-none"
+              : isDark
+                ? "bg-[#00D4FF] text-[#0A0E1A] hover:shadow-[0_0_16px_rgba(0,212,255,0.3)]"
+                : "bg-[#00B4D8] text-white hover:shadow-[0_0_16px_rgba(0,180,216,0.3)]"
+          }`}
         >
           {loading ? (
             <>
@@ -76,9 +75,7 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
           )}
         </button>
       </div>
-      {error && (
-        <p className="text-xs text-[#FF4D6A]">{error}</p>
-      )}
+      {error && <p className="text-xs text-[#FF4D6A]">{error}</p>}
     </div>
   );
 }

@@ -116,10 +116,45 @@ body {
   background: rgba(139, 146, 168, 0.5);
 }
 
-/* Select dropdown dark theme */
+/* Select dropdown */
 select option {
   background: #1A1F2E;
   color: #FFFFFF;
+}
+
+/* Light theme overrides */
+.light-theme {
+  --background: #FFFFFF;
+  --foreground: #1A1A2E;
+  --card: #F5F5F7;
+  --card-foreground: #1A1A2E;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1A2E;
+  --primary: #00B4D8;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F5F7;
+  --secondary-foreground: #1A1A2E;
+  --muted: #F5F5F7;
+  --muted-foreground: #6B7280;
+  --accent: #F5F5F7;
+  --accent-foreground: #1A1A2E;
+  --destructive: #EF4444;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #00B4D8;
+}
+
+.light-theme select option {
+  background: #FFFFFF;
+  color: #1A1A2E;
+}
+
+.light-theme ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 /* Progress bar animation */
@@ -129,5 +164,19 @@ select option {
   }
   100% {
     transform: translateX(400%);
+  }
+}
+
+/* Print styles for PDF export */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
   }
 }

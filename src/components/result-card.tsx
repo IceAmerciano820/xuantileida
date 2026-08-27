@@ -2,10 +2,14 @@
 
 import { useState, useCallback } from "react";
 import type { TopicAngle } from "@/app/page";
+import { useTheme } from "@/hooks/use-theme";
 
 interface ResultCardProps {
   topic: TopicAngle;
   index: number;
+  isFavorited: boolean;
+  onToggleFavorite: (topic: TopicAngle) => void;
+  onGenerate: (topic: TopicAngle) => void;
 }
 
 interface PlatformStyle {
@@ -25,7 +29,6 @@ const platformStyles: Record<string, PlatformStyle> = {
   "微信公众号": { icon: "微", color: "#07C160", bg: "rgba(7,193,96,0.15)" },
   "36氪": { icon: "36", color: "#007FFF", bg: "rgba(0,127,255,0.15)" },
   "虎嗅": { icon: "虎", color: "#F05E22", bg: "rgba(240,94,34,0.15)" },
-  "少数派": { icon: "少", color: "#DA635D", bg: "rgba(218,99,93,0.15)" },
   "澎湃新闻": { icon: "澎", color: "#C8102E", bg: "rgba(200,16,46,0.15)" },
   "界面新闻": { icon: "界", color: "#1A6EFF", bg: "rgba(26,110,255,0.15)" },
 };
@@ -34,14 +37,10 @@ const defaultPlatform: PlatformStyle = { icon: "", color: "#00D4FF", bg: "rgba(0
 
 function getHeatEmojis(level: string): string {
   switch (level) {
-    case "high":
-      return "🔥🔥🔥";
-    case "medium":
-      return "🔥🔥";
-    case "low":
-      return "🔥";
-    default:
-      return "🔥🔥";
+    case "high": return "🔥🔥🔥";
+    case "medium": return "🔥🔥";
+    case "low": return "🔥";
+    default: return "🔥🔥";
   }
 }
 
@@ -65,41 +64,24 @@ function formatPublishTime(raw: string): string {
   }
 }
 
-function CopyIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className || "h-3.5 w-3.5"} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className || "h-3.5 w-3.5"} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-    </svg>
-  );
-}
-
 function copyToClipboard(text: string): Promise<void> {
-  if (navigator.clipboard) {
-    return navigator.clipboard.writeText(text);
-  }
+  if (navigator.clipboard) return navigator.clipboard.writeText(text);
   return new Promise((resolve) => {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
     document.execCommand("copy");
-    document.body.removeChild(textarea);
+    document.body.removeChild(ta);
     resolve();
   });
 }
 
 function AngleCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const { isDark } = useTheme();
 
   const handleCopy = useCallback(async () => {
     await copyToClipboard(text);
@@ -114,61 +96,27 @@ function AngleCopyButton({ text }: { text: string }) {
       className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-all ${
         copied
           ? "text-[#00E5A0]"
-          : "text-[#8B92A8] opacity-0 group-hover:opacity-100 hover:text-[#00D4FF]"
+          : `opacity-0 group-hover:opacity-100 ${isDark ? "text-[#8B92A8] hover:text-[#00D4FF]" : "text-gray-400 hover:text-[#00B4D8]"}`
       }`}
       title="复制此角度"
     >
       {copied ? (
         <>
-          <CheckIcon className="h-3 w-3" />
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
           <span>已复制</span>
         </>
       ) : (
-        <CopyIcon className="h-3 w-3" />
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
       )}
     </button>
   );
 }
 
-function CopyAllButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(async () => {
-    await copyToClipboard(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
-
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-all ${
-        copied
-          ? "text-[#00E5A0]"
-          : "text-[#00D4FF]/70 hover:text-[#00D4FF] hover:bg-[#00D4FF]/5"
-      }`}
-      title={`复制${label}`}
-    >
-      {copied ? (
-        <>
-          <CheckIcon className="h-3 w-3" />
-          <span>已复制</span>
-        </>
-      ) : (
-        <>
-          <CopyIcon className="h-3 w-3" />
-          <span>复制全部</span>
-        </>
-      )}
-    </button>
-  );
-}
-
-export function ResultCard({ topic, index }: ResultCardProps) {
+export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGenerate }: ResultCardProps) {
   const style = platformStyles[topic.source] || { ...defaultPlatform, icon: topic.source.charAt(0) };
   const formattedTime = formatPublishTime(topic.publishTime);
   const heatEmojis = getHeatEmojis(topic.heatLevel);
+  const { isDark } = useTheme();
 
   const anglesText = topic.angles.map((a, i) => `${i + 1}. ${a}`).join("\n");
   const fullCopyText = [
@@ -180,96 +128,135 @@ export function ResultCard({ topic, index }: ResultCardProps) {
     anglesText,
   ].filter(Boolean).join("\n");
 
+  const [allCopied, setAllCopied] = useState(false);
+  const handleCopyAll = useCallback(async () => {
+    await copyToClipboard(fullCopyText);
+    setAllCopied(true);
+    setTimeout(() => setAllCopied(false), 2000);
+  }, [fullCopyText]);
+
   return (
-    <article className="group rounded-2xl border border-[rgba(0,212,255,0.1)] bg-[#1A1F2E]/70 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-[rgba(0,212,255,0.3)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(0,212,255,0.06)]">
-      {/* Main content */}
+    <article className={`group rounded-2xl border backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 ${
+      isDark
+        ? "border-[rgba(0,212,255,0.1)] bg-[#1A1F2E]/70 hover:border-[rgba(0,212,255,0.3)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(0,212,255,0.06)]"
+        : "border-gray-200 bg-white shadow-sm hover:border-[#00B4D8]/30 hover:shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_12px_rgba(0,180,216,0.06)]"
+    }`}>
       <div className="p-4 sm:p-5">
         {/* Title row */}
         <div className="flex items-start gap-3">
-          {/* Rank number */}
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#252B3D] text-xs font-semibold text-[#8B92A8]">
+          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+            isDark ? "bg-[#252B3D] text-[#8B92A8]" : "bg-gray-100 text-gray-500"
+          }`}>
             {index + 1}
           </span>
 
           <div className="min-w-0 flex-1">
-            {/* Title - clickable link */}
-            <h3 className="text-[15px] font-semibold leading-snug text-white break-words">
+            <h3 className={`text-[15px] font-semibold leading-snug break-words ${isDark ? "text-white" : "text-gray-900"}`}>
               {topic.url ? (
-                <a
-                  href={topic.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="transition-colors hover:text-[#00D4FF]"
-                >
+                <a href={topic.url} target="_blank" rel="noopener noreferrer" className={`inline transition-colors ${isDark ? "hover:text-[#00D4FF]" : "hover:text-[#00B4D8]"}`}>
                   {topic.title}
-                  <svg
-                    className="ml-1 inline h-3.5 w-3.5 text-[#8B92A8]/40 transition-colors hover:text-[#00D4FF]/60"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                  </svg>
+                  <svg className="ml-1 inline h-3 w-3 opacity-40" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                 </a>
-              ) : (
-                topic.title
-              )}
+              ) : topic.title}
             </h3>
 
-            {/* Meta row: platform tag + heat emoji + time */}
+            {/* Meta row */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {/* Platform tag */}
-              <span
-                className="inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold"
-                style={{ color: style.color, backgroundColor: style.bg }}
-              >
-                <span>{style.icon}</span>
-                <span>{topic.source}</span>
+              <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ color: style.color, backgroundColor: style.bg }}>
+                {style.icon} {topic.source}
               </span>
-              {/* Heat emoji */}
-              <span className="text-xs" title={`热度: ${topic.heatScore}`}>
-                {heatEmojis}
-              </span>
-              {/* Time */}
-              <span className="text-[11px] text-[#8B92A8]/70">{formattedTime}</span>
+              <span className="text-xs" title={`热度指数: ${topic.heatScore}`}>{heatEmojis}</span>
+              <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{formattedTime}</span>
             </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onToggleFavorite(topic)}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
+                isFavorited
+                  ? "text-[#00D4FF]"
+                  : isDark
+                    ? "text-[#8B92A8]/40 opacity-0 hover:text-[#00D4FF] group-hover:opacity-100"
+                    : "text-gray-300 opacity-0 hover:text-[#00B4D8] group-hover:opacity-100"
+              }`}
+              title={isFavorited ? "取消收藏" : "收藏"}
+            >
+              <svg className="h-4 w-4" fill={isFavorited ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={isFavorited ? 0 : 1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.06.472 1.736 1.55 1.736 2.74v13.876c0 1.19-.676 2.268-1.736 2.74l-7.5 3.33a.75.75 0 0 1-.612 0l-7.5-3.33c-1.06-.472-1.736-1.55-1.736-2.74V6.062c0-1.19.676-2.268 1.736-2.74l7.5-3.33a.75.75 0 0 1 .612 0l7.5 3.33Z" />
+              </svg>
+            </button>
           </div>
         </div>
 
         {/* Snippet */}
         {topic.snippet && (
-          <p className="mt-3 text-sm leading-relaxed text-[#8B92A8]">
+          <p className={`mt-3 text-sm leading-relaxed line-clamp-2 ${isDark ? "text-[#8B92A8]/80" : "text-gray-600"}`}>
             {topic.snippet}
           </p>
         )}
-      </div>
 
-      {/* Angles section */}
-      {topic.angles.length > 0 && (
-        <div className="border-t border-[rgba(0,212,255,0.06)] px-4 py-3 sm:px-5">
-          {/* Angles header */}
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-[#00D4FF]/60">
-              创作切入角度
-            </span>
-            <CopyAllButton text={fullCopyText} label="完整内容" />
+        {/* Angles section */}
+        {topic.angles.length > 0 && (
+          <div className={`mt-4 border-t pt-3 ${isDark ? "border-[rgba(0,212,255,0.06)]" : "border-gray-100"}`}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className={`text-xs font-medium ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>创作切入角度</span>
+              <button
+                type="button"
+                onClick={handleCopyAll}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-all ${
+                  allCopied
+                    ? "text-[#00E5A0]"
+                    : isDark
+                      ? "text-[#00D4FF]/70 hover:bg-[#00D4FF]/5 hover:text-[#00D4FF]"
+                      : "text-[#00B4D8]/70 hover:bg-blue-50 hover:text-[#00B4D8]"
+                }`}
+              >
+                {allCopied ? (
+                  <>
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                    <span>已复制</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
+                    <span>复制全部</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {topic.angles.map((angle, i) => (
+                <div key={i} className="group/angle flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#00D4FF]" />
+                  <span className={`text-sm leading-relaxed ${isDark ? "text-white/80" : "text-gray-700"}`}>{angle}</span>
+                  <AngleCopyButton text={angle} />
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Angle items */}
-          <ul className="space-y-1.5">
-            {topic.angles.map((angle, i) => (
-              <li key={i} className="group/angle flex items-start gap-2.5">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#00D4FF]/60" />
-                <span className="flex-1 text-sm leading-relaxed text-white/85">
-                  {angle}
-                </span>
-                <AngleCopyButton text={angle} />
-              </li>
-            ))}
-          </ul>
+        {/* Generate content button */}
+        <div className={`mt-3 flex justify-end border-t pt-3 ${isDark ? "border-[rgba(0,212,255,0.06)]" : "border-gray-100"}`}>
+          <button
+            type="button"
+            onClick={() => onGenerate(topic)}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all hover:scale-[1.02] ${
+              isDark
+                ? "border-[#00D4FF]/30 text-[#00D4FF] hover:border-[#00D4FF]/50 hover:bg-[#00D4FF]/5 hover:shadow-[0_0_12px_rgba(0,212,255,0.15)]"
+                : "border-[#00B4D8]/30 text-[#00B4D8] hover:border-[#00B4D8]/50 hover:bg-blue-50"
+            }`}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+            </svg>
+            生成内容
+          </button>
         </div>
-      )}
+      </div>
     </article>
   );
 }
