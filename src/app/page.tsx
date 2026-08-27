@@ -7,9 +7,12 @@ import { ResultCard } from "@/components/result-card";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { HeatTrendChart } from "@/components/heat-trend-chart";
+import { TrendCompareChart, type KeywordTrend } from "@/components/trend-compare-chart";
 import { GenerateContentModal } from "@/components/generate-content-modal";
 import { FavoritesModal } from "@/components/favorites-modal";
 import { RadarIcon, RadarBackground } from "@/components/radar-icon";
+
+export type FavoriteStatus = "draft" | "scheduled" | "published";
 
 export interface TopicAngle {
   id: string;
@@ -23,6 +26,8 @@ export interface TopicAngle {
   angles: string[];
   isPromotional?: boolean;
   matchedQueries?: string[];
+  status?: FavoriteStatus;
+  scheduledDate?: string;
 }
 
 interface TrendDataPoint {
@@ -95,6 +100,12 @@ function InnerApp() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [displayCount, setDisplayCount] = useState(10);
   const [showHotOnly, setShowHotOnly] = useState(false);
+  // P2-3: Trend compare state
+  const [compareKeywords, setCompareKeywords] = useState<string[]>([]);
+  const [compareData, setCompareData] = useState<{ trends: KeywordTrend[]; conclusion: string; xLabels: string[] } | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareInput, setCompareInput] = useState("");
+  const [showCompareInput, setShowCompareInput] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const cacheRef = useRef<{ key: string; data: SearchResponse; timestamp: number } | null>(null);
@@ -235,6 +246,69 @@ function InnerApp() {
     }
   }, [searchedKeyword, doSearch]);
 
+  // P2-3: Trend comparison
+  const fetchCompareData = useCallback(async (allKeywords: string[], range: TimeRange) => {
+    if (allKeywords.length < 2) {
+      setCompareData(null);
+      return;
+    }
+    setCompareLoading(true);
+    try {
+      const response = await fetch("/api/trend-compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: allKeywords, timeRange: range }),
+      });
+      if (!response.ok) {
+        throw new Error("对比数据获取失败");
+      }
+      const data = await response.json();
+      setCompareData(data);
+    } catch {
+      setCompareData(null);
+    } finally {
+      setCompareLoading(false);
+    }
+  }, []);
+
+  const handleAddCompareKeyword = useCallback((kw: string) => {
+    const trimmed = kw.trim();
+    if (!trimmed || trimmed === searchedKeyword || compareKeywords.includes(trimmed)) return;
+    if (compareKeywords.length >= 2) return; // Max 3 total (1 main + 2 compare)
+    const next = [...compareKeywords, trimmed];
+    setCompareKeywords(next);
+    setCompareInput("");
+    setShowCompareInput(false);
+    fetchCompareData([searchedKeyword, ...next], timeRange);
+  }, [compareKeywords, searchedKeyword, timeRange, fetchCompareData]);
+
+  const handleRemoveCompareKeyword = useCallback((kw: string) => {
+    const next = compareKeywords.filter(k => k !== kw);
+    setCompareKeywords(next);
+    if (searchedKeyword && next.length >= 1) {
+      fetchCompareData([searchedKeyword, ...next], timeRange);
+    } else {
+      setCompareData(null);
+    }
+  }, [compareKeywords, searchedKeyword, timeRange, fetchCompareData]);
+
+  // Reset comparison when a new search is performed
+  useEffect(() => {
+    if (compareKeywords.length > 0 || compareData) {
+      setCompareKeywords([]);
+      setCompareData(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchedKeyword]);
+
+  // Re-fetch comparison data when time range changes
+  useEffect(() => {
+    if (compareKeywords.length > 0 && searchedKeyword) {
+      fetchCompareData([searchedKeyword, ...compareKeywords], timeRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRange]);
+
   const handleSubmit = useCallback(() => { handleSearch(keyword); }, [handleSearch, keyword]);
   const handleKeywordClick = useCallback((kw: string) => { setKeyword(kw); setInputError(null); handleSearch(kw); }, [handleSearch]);
   const handleKeywordFill = useCallback((kw: string) => { setKeyword(kw); setInputError(null); }, []);
@@ -280,6 +354,27 @@ function InnerApp() {
   const handleClearFavorites = useCallback(() => {
     setFavorites([]);
     saveToStorage(FAVORITES_KEY, []);
+  }, []);
+
+  // P2-6: Update favorite status (draft/scheduled/published)
+  const handleUpdateFavoriteStatus = useCallback((key: string, status: FavoriteStatus) => {
+    setFavorites(prev => {
+      const next = prev.map(f => favKey(f) === key ? { ...f, status } : f);
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
+  }, []);
+
+  // P2-6: Schedule a favorite to a specific date
+  const handleScheduleFavorite = useCallback((key: string, date: string | undefined) => {
+    setFavorites(prev => {
+      const next = prev.map(f => favKey(f) === key
+        ? { ...f, scheduledDate: date, status: date ? "scheduled" as FavoriteStatus : (f.status === "scheduled" ? "draft" as FavoriteStatus : f.status) }
+        : f
+      );
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
   }, []);
 
   // Filtered, sorted, and sliced results
@@ -629,6 +724,81 @@ function InnerApp() {
               </div>
             )}
 
+            {/* P2-3: Multi-keyword trend comparison */}
+            <div className="mb-5 no-print">
+              {/* Add compare keyword entry */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCompareInput(!showCompareInput)}
+                  disabled={compareKeywords.length >= 2}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-40 ${
+                    isDark
+                      ? "border-[rgba(0,212,255,0.15)] text-[#00D4FF]/80 hover:border-[#00D4FF]/30 hover:text-[#00D4FF]"
+                      : "border-[#00B4D8]/20 text-[#00B4D8]/80 hover:border-[#00B4D8]/40 hover:text-[#00B4D8]"
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                  {compareKeywords.length === 0 ? "添加对比关键词" : "再添加一个"}
+                  <span className={`ml-0.5 text-[10px] ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>({compareKeywords.length + 1}/3)</span>
+                </button>
+              </div>
+
+              {/* Compare keyword input */}
+              {showCompareInput && (
+                <div className={`mt-2 flex items-center gap-2 rounded-xl border p-2.5 ${
+                  isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/50" : "border-gray-100 bg-gray-50"
+                }`}>
+                  <input
+                    type="text"
+                    value={compareInput}
+                    onChange={(e) => setCompareInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && compareInput.trim()) handleAddCompareKeyword(compareInput); }}
+                    placeholder="输入对比关键词，按回车添加"
+                    autoFocus
+                    className={`flex-1 bg-transparent text-sm outline-none ${isDark ? "text-white placeholder:text-[#8B92A8]/50" : "text-gray-900 placeholder:text-gray-400"}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => compareInput.trim() && handleAddCompareKeyword(compareInput)}
+                    disabled={!compareInput.trim()}
+                    className="rounded-lg bg-[#00D4FF] px-3 py-1 text-xs font-medium text-[#0A0E1A] transition-all hover:opacity-80 disabled:opacity-40"
+                  >
+                    添加
+                  </button>
+                  <button type="button" onClick={() => { setShowCompareInput(false); setCompareInput(""); }} className={`text-xs ${isDark ? "text-[#8B92A8] hover:text-white" : "text-gray-400 hover:text-gray-600"}`}>
+                    取消
+                  </button>
+                  {/* Quick pick from history */}
+                  {history.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      {history.filter(h => h !== searchedKeyword && !compareKeywords.includes(h)).slice(0, 3).map(h => (
+                        <button key={h} type="button" onClick={() => handleAddCompareKeyword(h)} className={`rounded-full border px-2 py-0.5 text-[11px] transition-all ${
+                          isDark ? "border-[rgba(0,212,255,0.12)] text-[#8B92A8] hover:text-[#00D4FF]" : "border-gray-200 text-gray-500 hover:text-[#00B4D8]"
+                        }`}>{h}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Compare chart */}
+              {(compareLoading || (compareData && compareKeywords.length > 0)) && (
+                <div className="mt-3">
+                  <TrendCompareChart
+                    trends={compareData?.trends || []}
+                    conclusion={compareData?.conclusion || ""}
+                    xLabels={compareData?.xLabels || []}
+                    timeRange={timeRange}
+                    loading={compareLoading}
+                    onRemoveKeyword={handleRemoveCompareKeyword}
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Cards */}
             <div className="space-y-4">
               {visibleTopics.map((topic, index) => (
@@ -702,6 +872,8 @@ function InnerApp() {
         favorites={favorites}
         onRemove={handleRemoveFavorite}
         onClear={handleClearFavorites}
+        onUpdateStatus={handleUpdateFavoriteStatus}
+        onSchedule={handleScheduleFavorite}
       />
     </div>
   );
