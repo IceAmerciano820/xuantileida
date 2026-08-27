@@ -63,3 +63,22 @@
 
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+
+## 项目功能说明
+
+### 热点灵感采集工具
+
+面向内容创作者的选题发现工具，核心功能：
+
+- **搜索入口**：`src/app/page.tsx` - 主页面，包含搜索表单和结果展示
+- **API 路由**：`src/app/api/search/route.ts` - 热点搜索接口，使用 web-search SDK 聚合多平台数据，LLM 生成创作角度建议
+- **组件**：
+  - `src/components/search-input.tsx` - 搜索输入框组件
+  - `src/components/result-card.tsx` - 热点结果卡片组件
+  - `src/components/loading-skeleton.tsx` - 加载骨架屏
+  - `src/components/empty-state.tsx` - 空状态引导
+
+### 集成服务
+
+- **Web Search**：`coze-coding-dev-sdk` 的 `SearchClient` + `advancedSearch`，用于搜索全网热点
+- **LLM**：`coze-coding-dev-sdk` 的 `LLMClient` + `invoke`，用于生成内容创作角度建议（模型：doubao-seed-2-0-mini-260215）
