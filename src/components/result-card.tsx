@@ -8,39 +8,35 @@ interface ResultCardProps {
   index: number;
 }
 
-const heatLabels = {
+const heatLabels: Record<string, string> = {
   high: "高热",
   medium: "中热",
   low: "一般",
 };
 
-const heatColors = {
-  high: "bg-red-50 text-red-600 border-red-100",
-  medium: "bg-amber-50 text-amber-600 border-amber-100",
-  low: "bg-stone-50 text-stone-500 border-stone-100",
+interface PlatformStyle {
+  icon: string;
+  color: string;
+  bg: string;
+}
+
+const platformStyles: Record<string, PlatformStyle> = {
+  "微博": { icon: "微", color: "#E6162D", bg: "rgba(230,22,45,0.12)" },
+  "知乎": { icon: "知", color: "#0066FF", bg: "rgba(0,102,255,0.12)" },
+  "抖音": { icon: "抖", color: "#00F0FF", bg: "rgba(0,240,255,0.1)" },
+  "小红书": { icon: "红", color: "#FE2C55", bg: "rgba(254,44,85,0.12)" },
+  "百度": { icon: "百", color: "#2932E1", bg: "rgba(41,50,225,0.12)" },
+  "B站": { icon: "B", color: "#FB7299", bg: "rgba(251,114,153,0.12)" },
+  "今日头条": { icon: "头", color: "#F85959", bg: "rgba(248,89,89,0.12)" },
+  "微信公众号": { icon: "微", color: "#07C160", bg: "rgba(7,193,96,0.12)" },
+  "36氪": { icon: "36", color: "#007FFF", bg: "rgba(0,127,255,0.12)" },
+  "虎嗅": { icon: "虎", color: "#F05E22", bg: "rgba(240,94,34,0.12)" },
+  "少数派": { icon: "少", color: "#DA635D", bg: "rgba(218,99,93,0.12)" },
+  "澎湃新闻": { icon: "澎", color: "#C8102E", bg: "rgba(200,16,46,0.12)" },
+  "界面新闻": { icon: "界", color: "#1A6EFF", bg: "rgba(26,110,255,0.12)" },
 };
 
-const heatBarColors = {
-  high: "bg-red-400",
-  medium: "bg-amber-400",
-  low: "bg-stone-300",
-};
-
-const platformIcons: Record<string, string> = {
-  "微博": "微",
-  "知乎": "知",
-  "抖音": "抖",
-  "小红书": "红",
-  "百度": "百",
-  "B站": "B",
-  "今日头条": "头",
-  "微信公众号": "微",
-  "36氪": "36",
-  "虎嗅": "虎",
-  "少数派": "少",
-  "澎湃新闻": "澎",
-  "界面新闻": "界",
-};
+const defaultPlatform: PlatformStyle = { icon: "", color: "#00D4FF", bg: "rgba(0,212,255,0.1)" };
 
 function formatPublishTime(raw: string): string {
   if (!raw || raw === "今日") return "今日";
@@ -60,7 +56,7 @@ function formatPublishTime(raw: string): string {
   }
 }
 
-function CopyButton({ text, label }: { text: string; label: string }) {
+function CopyButton({ text, label, className }: { text: string; label: string; className?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -69,7 +65,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // fallback
       const textarea = document.createElement("textarea");
       textarea.value = text;
       textarea.style.position = "fixed";
@@ -87,15 +82,19 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#A8A29E] transition-colors hover:bg-stone-100 hover:text-[#57534E]"
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition-all ${
+        copied
+          ? "text-[#00E5A0]"
+          : "text-[#8B92A8] opacity-0 group-hover:opacity-100 hover:text-[#00D4FF]"
+      } ${className || ""}`}
       title={`复制${label}`}
     >
       {copied ? (
         <>
-          <svg className="h-3 w-3 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
           </svg>
-          <span className="text-emerald-500">已复制</span>
+          <span>已复制</span>
         </>
       ) : (
         <>
@@ -110,7 +109,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export function ResultCard({ topic, index }: ResultCardProps) {
-  const platformIcon = platformIcons[topic.source] || topic.source.charAt(0);
+  const style = platformStyles[topic.source] || { ...defaultPlatform, icon: topic.source.charAt(0) };
   const formattedTime = formatPublishTime(topic.publishTime);
 
   const titleWithAngles = [
@@ -122,24 +121,27 @@ export function ResultCard({ topic, index }: ResultCardProps) {
   ].join("\n");
 
   return (
-    <article className="group rounded-xl border border-[#E7E5E4] bg-white transition-all hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:-translate-y-px">
-      {/* Header: rank + title + heat */}
+    <article className="group rounded-2xl border border-[rgba(0,212,255,0.1)] bg-[#1A1F2E]/70 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-[rgba(0,212,255,0.3)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(0,212,255,0.06)]">
+      {/* Main content */}
       <div className="flex items-start gap-3 p-4 sm:p-5">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-stone-100 text-xs font-medium text-[#78716C]">
+        {/* Rank number */}
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#252B3D] text-xs font-semibold text-[#8B92A8]">
           {index + 1}
         </span>
+
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-semibold leading-snug text-[#1C1917]">
+          {/* Title */}
+          <h3 className="text-[15px] font-semibold leading-snug text-white">
             {topic.url ? (
               <a
                 href={topic.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-amber-600 transition-colors"
+                className="transition-colors hover:text-[#00D4FF]"
               >
                 {topic.title}
                 <svg
-                  className="ml-1 inline h-3.5 w-3.5 text-[#A8A29E] group-hover:text-amber-400"
+                  className="ml-1 inline h-3.5 w-3.5 text-[#8B92A8]/50 transition-colors group-hover:text-[#00D4FF]/50"
                   fill="none"
                   viewBox="0 0 24 24"
                   strokeWidth={2}
@@ -152,55 +154,71 @@ export function ResultCard({ topic, index }: ResultCardProps) {
               topic.title
             )}
           </h3>
+
+          {/* Snippet */}
           {topic.snippet && (
-            <p className="mt-1.5 text-sm leading-relaxed text-[#78716C] line-clamp-2">
+            <p className="mt-1.5 text-sm leading-relaxed text-[#8B92A8] line-clamp-2">
               {topic.snippet}
             </p>
           )}
-          {/* Meta: source + time + copy */}
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-stone-100 text-[10px] font-bold text-[#57534E]">
-              {platformIcon}
+
+          {/* Meta row */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {/* Platform tag */}
+            <span
+              className="inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold"
+              style={{ color: style.color, backgroundColor: style.bg }}
+            >
+              <span>{style.icon}</span>
+              <span>{topic.source}</span>
             </span>
-            <span className="text-xs text-[#78716C]">{topic.source}</span>
-            <span className="text-[#D6D3D1]">|</span>
-            <span className="text-xs text-[#A8A29E]">{formattedTime}</span>
+            {/* Time */}
+            <span className="text-[11px] text-[#8B92A8]/70">{formattedTime}</span>
+            {/* Copy title */}
             <CopyButton text={topic.title} label="标题" />
           </div>
         </div>
+
         {/* Heat indicator */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${heatColors[topic.heatLevel]}`}>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+            topic.heatLevel === "high"
+              ? "bg-[rgba(255,77,106,0.12)] text-[#FF4D6A]"
+              : topic.heatLevel === "medium"
+              ? "bg-[rgba(0,212,255,0.1)] text-[#00D4FF]"
+              : "bg-[#252B3D] text-[#8B92A8]"
+          }`}>
             {heatLabels[topic.heatLevel]}
           </span>
+          {/* Heat bar */}
           <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-12 overflow-hidden rounded-full bg-stone-100">
+            <div className="h-1 w-14 overflow-hidden rounded-full bg-[#252B3D]">
               <div
-                className={`h-full rounded-full transition-all ${heatBarColors[topic.heatLevel]}`}
+                className="h-full rounded-full bg-gradient-to-r from-[#00D4FF]/60 to-[#00D4FF] transition-all duration-500"
                 style={{ width: `${topic.heatScore}%` }}
               />
             </div>
-            <span className="text-[11px] tabular-nums text-[#A8A29E]">{topic.heatScore}</span>
+            <span className="text-[11px] tabular-nums text-[#8B92A8]">{topic.heatScore}</span>
           </div>
         </div>
       </div>
 
-      {/* Content Angles */}
-      <div className="mx-4 mb-4 rounded-lg bg-[#FAFAF9] p-3 sm:mx-5 sm:mb-5">
-        <div className="mb-2 flex items-center justify-between">
+      {/* Angles section */}
+      <div className="border-t border-[rgba(0,212,255,0.06)] px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+        <div className="mb-2.5 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <svg className="h-3.5 w-3.5 text-[#00D4FF]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
             </svg>
-            <span className="text-xs font-medium text-[#57534E]">创作切入角度</span>
+            <span className="text-xs font-medium text-[#8B92A8]">创作切入角度</span>
           </div>
-          <CopyButton text={titleWithAngles} label="全部" />
+          <CopyButton text={titleWithAngles} label="全部" className="!opacity-100" />
         </div>
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {topic.angles.map((angle, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-              <span className="text-[#44403C] leading-relaxed">{angle}</span>
+            <li key={i} className="flex items-start gap-2.5 text-sm">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#00D4FF]/70" />
+              <span className="leading-relaxed text-white/80">{angle}</span>
             </li>
           ))}
         </ul>
