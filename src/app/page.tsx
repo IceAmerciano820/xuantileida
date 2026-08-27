@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/empty-state";
 import { HeatTrendChart } from "@/components/heat-trend-chart";
 import { GenerateContentModal } from "@/components/generate-content-modal";
 import { FavoritesModal } from "@/components/favorites-modal";
+import { RadarIcon, RadarBackground } from "@/components/radar-icon";
 
 export interface TopicAngle {
   id: string;
@@ -196,7 +197,7 @@ function InnerApp() {
   const buildExportText = useCallback(() => {
     if (!results || displayedTopics.length === 0) return "";
     const lines: string[] = [
-      `热点灵感采集 - 「${searchedKeyword}」`,
+      `选题雷达 - 「${searchedKeyword}」`,
       `时间范围: ${TIME_RANGE_LABELS[timeRange]}`,
       `采集时间: ${new Date().toLocaleString("zh-CN")}`,
       `共 ${displayedTopics.length} 条热点`,
@@ -219,7 +220,7 @@ function InnerApp() {
   const buildMarkdown = useCallback(() => {
     if (!results || displayedTopics.length === 0) return "";
     const lines: string[] = [
-      `# 热点灵感采集 - 「${searchedKeyword}」`,
+      `# 选题雷达 - 「${searchedKeyword}」`,
       "",
       `> 时间范围: ${TIME_RANGE_LABELS[timeRange]} | 采集时间: ${new Date().toLocaleString("zh-CN")} | 共 ${displayedTopics.length} 条`,
       "",
@@ -260,7 +261,7 @@ function InnerApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `热点采集_${searchedKeyword}_${new Date().toISOString().slice(0, 10)}.md`;
+    a.download = `选题雷达_${searchedKeyword}_${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
     setShowExportMenu(false);
@@ -278,7 +279,7 @@ function InnerApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `热点采集_${searchedKeyword}_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `选题雷达_${searchedKeyword}_${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     setShowExportMenu(false);
@@ -288,7 +289,9 @@ function InnerApp() {
   const hasNoResults = results && results.topics.length === 0;
 
   return (
-    <div className={`flex min-h-screen flex-col transition-colors duration-300 ${isDark ? "bg-[#0A0E1A]" : "bg-[#FAFAFA]"}`}>
+    <div className={`relative flex min-h-screen flex-col transition-colors duration-300 ${isDark ? "bg-[#0A0E1A]" : "bg-[#FAFAFA]"}`}>
+      {/* Background radar decoration */}
+      <RadarBackground isDark={isDark} />
       {/* Header */}
       <header className={`sticky top-0 z-20 border-b backdrop-blur-xl no-print ${
         isDark ? "border-[rgba(0,212,255,0.08)] bg-[#0A0E1A]/90" : "border-gray-200 bg-white/90"
@@ -297,12 +300,10 @@ function InnerApp() {
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isDark ? "bg-[#00D4FF]/10" : "bg-[#00B4D8]/10"}`}>
-              <svg className={`h-4.5 w-4.5 ${isDark ? "text-[#00D4FF]" : "text-[#00B4D8]"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
-              </svg>
+              <RadarIcon size={20} className={isDark ? "text-[#00D4FF]" : "text-[#00B4D8]"} />
             </div>
             <h1 className={`text-lg font-bold tracking-tight ${isDark ? "bg-gradient-to-r from-[#00D4FF] to-[#0066FF] bg-clip-text text-transparent" : "text-gray-900"}`}>
-              热点灵感
+              选题雷达
             </h1>
           </div>
 
@@ -329,8 +330,9 @@ function InnerApp() {
             <button type="button" onClick={() => setShowFavorites(true)} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-all ${
               isDark ? "border-[rgba(0,212,255,0.12)] bg-[#12162A] text-[#8B92A8] hover:border-[#00D4FF]/30 hover:text-white" : "border-gray-200 bg-white text-gray-600 hover:border-[#00B4D8]/30 hover:text-gray-900"
             }`}>
-              <svg className="h-3.5 w-3.5" fill={favorites.length > 0 ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={favorites.length > 0 ? 0 : 1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.06.472 1.736 1.55 1.736 2.74v13.876c0 1.19-.676 2.268-1.736 2.74l-7.5 3.33a.75.75 0 0 1-.612 0l-7.5-3.33c-1.06-.472-1.736-1.55-1.736-2.74V6.062c0-1.19.676-2.268 1.736-2.74l7.5-3.33a.75.75 0 0 1 .612 0l7.5 3.33Z" />
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
               </svg>
               灵感库{favorites.length > 0 && <span className="text-[#00D4FF]">({favorites.length})</span>}
             </button>
@@ -391,7 +393,7 @@ function InnerApp() {
                     </div>
                   </div>
                   <button type="button" onClick={() => { setShowFavorites(true); setShowMobileMenu(false); }} className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors ${isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-600 hover:bg-gray-50"}`}>
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.06.472 1.736 1.55 1.736 2.74v13.876c0 1.19-.676 2.268-1.736 2.74l-7.5 3.33a.75.75 0 0 1-.612 0l-7.5-3.33c-1.06-.472-1.736-1.55-1.736-2.74V6.062c0-1.19.676-2.268 1.736-2.74l7.5-3.33a.75.75 0 0 1 .612 0l7.5 3.33Z" /></svg>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
                     灵感库 ({favorites.length})
                   </button>
                   {hasResults && (

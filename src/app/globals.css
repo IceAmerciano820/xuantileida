@@ -167,6 +167,40 @@ select option {
   }
 }
 
+/* Radar sweep rotation */
+@keyframes radar-sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Radar pulse ping */
+@keyframes radar-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  75%, 100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Radar pulse for loading */
+@keyframes radar-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
 /* Print styles for PDF export */
 @media print {
   body {

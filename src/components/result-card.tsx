@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import type { TopicAngle } from "@/app/page";
 import { useTheme } from "@/hooks/use-theme";
+import { RadarPulseDot } from "@/components/radar-icon";
 
 interface ResultCardProps {
   topic: TopicAngle;
@@ -165,7 +166,10 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
               <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ color: style.color, backgroundColor: style.bg }}>
                 {style.icon} {topic.source}
               </span>
-              <span className="text-xs" title={`热度指数: ${topic.heatScore}`}>{heatEmojis}</span>
+              <span className="inline-flex items-center gap-1 text-xs" title={`热度指数: ${topic.heatScore}`}>
+                <RadarPulseDot color={isDark ? "#00D4FF" : "#00B4D8"} className="h-1.5 w-1.5" />
+                {heatEmojis}
+              </span>
               <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{formattedTime}</span>
             </div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTheme } from "@/hooks/use-theme";
+import { RadarIcon } from "@/components/radar-icon";
 
 interface EmptyStateProps {
   variant?: "initial" | "no-results" | "error";
@@ -52,9 +53,7 @@ export function EmptyState({ variant = "initial", message, onKeywordClick, onRet
         <div className={`mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border ${
           isDark ? "border-[rgba(0,212,255,0.08)] bg-[#1A1F2E]/60" : "border-gray-200 bg-gray-50"
         }`}>
-          <svg className={`h-8 w-8 ${isDark ? "text-[#8B92A8]/40" : "text-gray-300"}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-          </svg>
+          <RadarIcon size={32} className={isDark ? "text-[#8B92A8]/40" : "text-gray-300"} />
         </div>
         <h3 className={`mb-1.5 text-base font-medium ${isDark ? "text-white/80" : "text-gray-700"}`}>暂无相关热点</h3>
         <p className={`mb-5 max-w-sm text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{message || "换个关键词试试"}</p>
@@ -78,16 +77,15 @@ export function EmptyState({ variant = "initial", message, onKeywordClick, onRet
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className={`mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border ${
-        isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/40" : "border-gray-200 bg-gray-50"
+        isDark ? "border-[rgba(0,212,255,0.08)] bg-[#1A1F2E]/60" : "border-gray-200 bg-gray-50"
       }`}>
-        <svg className={`h-10 w-10 ${isDark ? "text-[#00D4FF]/30" : "text-[#00B4D8]/30"}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-1.5m-12 0H4.5m15-6.5-1.06 1.06M6.56 17.44l-1.06 1.06m0-13l1.06 1.06M17.44 17.44l1.06 1.06" />
-        </svg>
+        <RadarIcon size={40} className={isDark ? "text-[#00D4FF]/40" : "text-[#00B4D8]/40"} />
       </div>
-      <h2 className={`mb-2 text-lg font-semibold ${isDark ? "text-white/90" : "text-gray-800"}`}>发现热点灵感</h2>
-      <p className={`max-w-xs text-sm leading-relaxed ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
-        输入你感兴趣的话题关键词，自动采集全网热点数据，<br />为内容创作提供切入角度建议
+      <h3 className={`mb-2 text-base font-medium ${isDark ? "text-white/80" : "text-gray-700"}`}>
+        输入关键词，开始雷达扫描
+      </h3>
+      <p className={`max-w-xs text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
+        聚合微博、知乎、抖音、小红书等多平台热点，为内容创作提供选题灵感
       </p>
     </div>
   );

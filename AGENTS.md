@@ -66,17 +66,23 @@
 
 ## 项目功能说明
 
-### 热点灵感采集工具
+### 选题雷达
 
-面向内容创作者的选题发现工具，核心功能：
+面向内容创作者的热点选题发现工具，核心功能：
 
 - **搜索入口**：`src/app/page.tsx` - 主页面，包含搜索表单和结果展示
 - **API 路由**：`src/app/api/search/route.ts` - 热点搜索接口，使用 web-search SDK 聚合多平台数据，LLM 生成创作角度建议
 - **组件**：
+  - `src/components/radar-icon.tsx` - 雷达图标组件（Logo图标、扫描动画、脉冲点、背景装饰）
   - `src/components/search-input.tsx` - 搜索输入框组件
   - `src/components/result-card.tsx` - 热点结果卡片组件
   - `src/components/loading-skeleton.tsx` - 加载骨架屏
   - `src/components/empty-state.tsx` - 空状态引导
+  - `src/components/heat-trend-chart.tsx` - 热度趋势图
+  - `src/components/generate-content-modal.tsx` - 生成内容弹窗
+  - `src/components/favorites-modal.tsx` - 灵感库弹窗
+  - `src/components/modal.tsx` - 通用弹窗组件
+  - `src/hooks/use-theme.tsx` - 深色/浅色主题上下文
 
 ### 集成服务
 
