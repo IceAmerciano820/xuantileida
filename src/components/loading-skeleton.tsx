@@ -2,7 +2,11 @@
 
 import { useTheme } from "@/hooks/use-theme";
 
-export function LoadingSkeleton() {
+interface LoadingSkeletonProps {
+  phase?: string;
+}
+
+export function LoadingSkeleton({ phase }: LoadingSkeletonProps) {
   const { isDark } = useTheme();
 
   return (
@@ -25,7 +29,7 @@ export function LoadingSkeleton() {
             </svg>
           </span>
         </div>
-        <span className={`text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>正在全网雷达扫描...</span>
+        <span className={`text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{phase || "正在全网雷达扫描..."}</span>
         <div className="relative ml-auto h-1 w-24 overflow-hidden rounded-full bg-[#252B3D]/50">
           <div className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#00D4FF]" style={{ animation: "progress 1.5s ease-in-out infinite" }} />
         </div>

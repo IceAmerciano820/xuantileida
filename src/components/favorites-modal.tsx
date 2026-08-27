@@ -12,13 +12,16 @@ interface FavoritesModalProps {
   onClear: () => void;
   onUpdateStatus: (key: string, status: FavoriteStatus) => void;
   onSchedule: (key: string, date: string | undefined) => void;
+  onUpdateNote: (key: string, note: string) => void;
+  onUpdateTags: (key: string, tags: string[]) => void;
+  onImport: (items: TopicAngle[]) => void;
 }
 
 type ModalTab = "list" | "calendar";
 
 const STATUS_CONFIG: Record<FavoriteStatus, { label: string; color: string; bg: string; dot: string }> = {
-  draft: { label: "待写", color: "#8B92A8", bg: "rgba(139,146,168,0.12)", dot: "#8B92A8" },
-  scheduled: { label: "已排期", color: "#FF6B35", bg: "rgba(255,107,53,0.12)", dot: "#FF6B35" },
+  draft: { label: "待构思", color: "#8B92A8", bg: "rgba(139,146,168,0.12)", dot: "#8B92A8" },
+  scheduled: { label: "撰写中", color: "#FF6B35", bg: "rgba(255,107,53,0.12)", dot: "#FF6B35" },
   published: { label: "已发布", color: "#00E5A0", bg: "rgba(0,229,160,0.12)", dot: "#00E5A0" },
 };
 
@@ -77,13 +80,18 @@ function isToday(d: Date): boolean {
 
 const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
-export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, onUpdateStatus, onSchedule }: FavoritesModalProps) {
+export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, onUpdateStatus, onSchedule, onUpdateNote, onUpdateTags, onImport }: FavoritesModalProps) {
   const { isDark } = useTheme();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>("list");
   const [weekOffset, setWeekOffset] = useState(0);
   const [schedulingKey, setSchedulingKey] = useState<string | null>(null);
+  const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [editingTagsKey, setEditingTagsKey] = useState<string | null>(null);
+  const [tagDraft, setTagDraft] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
 
   const favKey = useCallback((t: TopicAngle) => t.url || t.id, []);
 
@@ -134,9 +142,12 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
   }, [favorites, getStatus]);
 
   const buildJSON = useCallback(() => {
-    return JSON.stringify(favorites.map(({ id, title, source, url, snippet, heatScore, heatLevel, publishTime, angles, status, scheduledDate }) => ({
+    return JSON.stringify(favorites.map(({ id, title, source, url, snippet, heatScore, heatLevel, publishTime, angles, status, scheduledDate, note, customTags, trendTag, score, scoreReason, relatedWords, riskLevel }) => ({
       id, title, source, url, snippet, heatScore, heatLevel, publishTime, angles,
       status: status || "draft", scheduledDate: scheduledDate || null,
+      note: note || "", customTags: customTags || [],
+      trendTag: trendTag || null, score: score || null, scoreReason: scoreReason || "",
+      relatedWords: relatedWords || [], riskLevel: riskLevel || null,
     })), null, 2);
   }, [favorites]);
 
@@ -178,8 +189,8 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
     lines.push("");
     lines.push(`| 状态 | 数量 |`);
     lines.push(`|------|------|`);
-    lines.push(`| 待写 | ${stats.draft} |`);
-    lines.push(`| 已排期 | ${stats.scheduled} |`);
+    lines.push(`| 待构思 | ${stats.draft} |`);
+    lines.push(`| 撰写中 | ${stats.scheduled} |`);
     lines.push(`| 已发布 | ${stats.published} |`);
     lines.push("");
 
@@ -224,6 +235,75 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
     downloadFile(lines.join("\n"), `本周选题计划_${weekStart}_${weekEnd}.md`, "text/markdown");
     setShowExportMenu(false);
   }, [favorites, getStatus, weekOffset]);
+
+  // v2.1: Import JSON handler
+  const handleImportJSON = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          if (!Array.isArray(data)) { setImportError("JSON 格式错误：需要是数组"); return; }
+          const valid = data.filter((d: Record<string, unknown>) => d && typeof d.title === "string");
+          if (valid.length === 0) { setImportError("未找到有效的选题数据"); return; }
+          const items: TopicAngle[] = valid.map((d: Record<string, unknown>, i: number) => ({
+            id: (d.id as string) || `import_${Date.now()}_${i}`,
+            title: d.title as string,
+            source: (d.source as string) || "导入",
+            url: (d.url as string) || "",
+            snippet: (d.snippet as string) || "",
+            heatScore: (d.heatScore as number) || 0,
+            heatLevel: (["high", "medium", "low"].includes(d.heatLevel as string) ? (d.heatLevel as "high" | "medium" | "low") : "medium") as TopicAngle["heatLevel"],
+            publishTime: (d.publishTime as string) || new Date().toLocaleDateString("zh-CN"),
+            angles: Array.isArray(d.angles) ? (d.angles as string[]) : [],
+            trendTag: (["暴涨", "平稳", "降温", "潜力黑马"].includes(d.trendTag as string) ? (d.trendTag as TopicAngle["trendTag"]) : "平稳") as TopicAngle["trendTag"],
+            score: (typeof d.score === "number" ? d.score : 0) as number,
+            scoreReason: (typeof d.scoreReason === "string" ? d.scoreReason : "") as string,
+            relatedWords: Array.isArray(d.relatedWords) ? (d.relatedWords as string[]) : [],
+            riskLevel: (["低", "中", "高"].includes(d.riskLevel as string) ? (d.riskLevel as TopicAngle["riskLevel"]) : "低") as TopicAngle["riskLevel"],
+            note: (d.note as string) || undefined,
+            customTags: Array.isArray(d.customTags) ? (d.customTags as string[]) : [],
+            status: ((["draft", "scheduled", "published"].includes(d.status as string) ? d.status : "draft") as FavoriteStatus),
+            scheduledDate: (d.scheduledDate as string) || undefined,
+            heatTrend: Array.isArray(d.heatTrend) ? (d.heatTrend as number[]) : [],
+          }));
+          onImport(items);
+          setImportError(null);
+        } catch {
+          setImportError("JSON 解析失败，请检查文件格式");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [onImport]);
+
+  // Note save
+  const saveNote = useCallback((key: string) => {
+    onUpdateNote(key, noteDraft.trim());
+    setEditingNoteKey(null);
+  }, [onUpdateNote, noteDraft]);
+
+  // Tag add
+  const addTag = useCallback((key: string, topic: TopicAngle) => {
+    const tag = tagDraft.trim();
+    if (!tag) return;
+    const current = topic.customTags || [];
+    if (current.includes(tag)) { setTagDraft(""); return; }
+    onUpdateTags(key, [...current, tag]);
+    setTagDraft("");
+  }, [onUpdateTags, tagDraft]);
+
+  // Tag remove
+  const removeTag = useCallback((key: string, topic: TopicAngle, tag: string) => {
+    const current = topic.customTags || [];
+    onUpdateTags(key, current.filter(t => t !== tag));
+  }, [onUpdateTags]);
 
   // Week calendar data
   const weekDates = useMemo(() => {
@@ -276,6 +356,9 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
                 )}
               </div>
             )}
+            <button type="button" onClick={handleImportJSON} className={`text-xs transition-colors ${isDark ? "text-[#00E5A0]/70 hover:text-[#00E5A0]" : "text-emerald-500/70 hover:text-emerald-500"}`} title="从 JSON 文件导入">
+              导入
+            </button>
             {favorites.length > 0 && (
               <button type="button" onClick={onClear} className="text-xs text-[#FF4D6A]/70 hover:text-[#FF4D6A]">
                 清空
@@ -415,6 +498,64 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
                         )}
                       </div>
                     )}
+                    {/* v2.1: Custom tags */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {(topic.customTags || []).map((tag) => (
+                        <span key={tag} className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] ${
+                          isDark ? "bg-[#00D4FF]/10 text-[#00D4FF]/80" : "bg-[#00B4D8]/10 text-[#00B4D8]"
+                        }`}>
+                          {tag}
+                          <button type="button" onClick={() => removeTag(key, topic, tag)} className="ml-0.5 opacity-50 hover:opacity-100">&times;</button>
+                        </span>
+                      ))}
+                      {editingTagsKey === key ? (
+                        <input
+                          type="text"
+                          value={tagDraft}
+                          onChange={(e) => setTagDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { addTag(key, topic); } if (e.key === "Escape") { setEditingTagsKey(null); setTagDraft(""); } }}
+                          onBlur={() => { if (tagDraft.trim()) addTag(key, topic); setEditingTagsKey(null); }}
+                          placeholder="输入标签..."
+                          autoFocus
+                          className={`w-20 rounded-md border px-1.5 py-0.5 text-[11px] outline-none ${
+                            isDark ? "border-[rgba(0,212,255,0.15)] bg-transparent text-white placeholder:text-[#8B92A8]/40" : "border-gray-200 bg-transparent text-gray-700 placeholder:text-gray-400"
+                          }`}
+                        />
+                      ) : (
+                        <button type="button" onClick={() => { setEditingTagsKey(key); setTagDraft(""); }} className={`rounded-full px-1.5 py-0.5 text-[11px] transition-colors ${
+                          isDark ? "text-[#8B92A8]/50 hover:text-[#00D4FF]/70" : "text-gray-400 hover:text-[#00B4D8]"
+                        }`}>+ 标签</button>
+                      )}
+                    </div>
+                    {/* v2.1: Note */}
+                    {editingNoteKey === key ? (
+                      <div className="mt-2">
+                        <textarea
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          placeholder="写下你的创作思路、素材备注..."
+                          rows={2}
+                          className={`w-full resize-none rounded-lg border p-2 text-xs outline-none ${
+                            isDark ? "border-[rgba(0,212,255,0.1)] bg-[#12162A]/50 text-white placeholder:text-[#8B92A8]/40" : "border-gray-200 bg-gray-50 text-gray-700 placeholder:text-gray-400"
+                          }`}
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveNote(key); }}
+                        />
+                        <div className="mt-1 flex items-center gap-2">
+                          <button type="button" onClick={() => saveNote(key)} className="rounded-md bg-[#00D4FF]/15 px-2 py-0.5 text-[11px] text-[#00D4FF] hover:bg-[#00D4FF]/25">保存</button>
+                          <button type="button" onClick={() => { setEditingNoteKey(null); }} className={`text-[11px] ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>取消</button>
+                          <span className={`text-[10px] ${isDark ? "text-[#8B92A8]/40" : "text-gray-400"}`}>Ctrl+Enter 保存</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => { setEditingNoteKey(key); setNoteDraft(topic.note || ""); }} className={`mt-1.5 block w-full text-left text-[11px] italic transition-colors ${
+                        topic.note
+                          ? (isDark ? "text-[#8B92A8]/70 hover:text-white" : "text-gray-500 hover:text-gray-700")
+                          : (isDark ? "text-[#8B92A8]/30 hover:text-[#8B92A8]/60" : "text-gray-400 hover:text-gray-500")
+                      }`}>
+                        {topic.note ? `📝 ${topic.note}` : "+ 添加笔记..."}
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -496,6 +637,16 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
             </div>
           )}
         </div>
+
+        {/* Import error */}
+        {importError && (
+          <div className={`border-t px-5 py-2 ${isDark ? "border-[rgba(255,77,106,0.15)] bg-[#FF4D6A]/5" : "border-red-100 bg-red-50"}`}>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-[#FF4D6A]">{importError}</p>
+              <button type="button" onClick={() => setImportError(null)} className="text-xs text-[#FF4D6A]/50 hover:text-[#FF4D6A]">&times;</button>
+            </div>
+          </div>
+        )}
 
         {/* Local storage hint */}
         {favorites.length > 0 && (

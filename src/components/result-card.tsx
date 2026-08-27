@@ -9,8 +9,11 @@ interface ResultCardProps {
   topic: TopicAngle;
   index: number;
   isFavorited: boolean;
+  isDone: boolean;
   onToggleFavorite: (topic: TopicAngle) => void;
   onGenerate: (topic: TopicAngle) => void;
+  onIgnore: (key: string) => void;
+  onMarkDone: (key: string) => void;
 }
 
 interface PlatformStyle {
@@ -36,26 +39,22 @@ const platformStyles: Record<string, PlatformStyle> = {
 
 const defaultPlatform: PlatformStyle = { icon: "", color: "#00D4FF", bg: "rgba(0,212,255,0.12)" };
 
-// P2-1: Heat level tiers with colors
-function getHeatEmojis(score: number): string {
-  if (score >= 70) return "🔥🔥🔥";
-  if (score >= 40) return "🔥🔥";
-  return "🔥";
-}
+// Trend tag styles
+const trendTagStyles: Record<string, { color: string; bg: string; label: string }> = {
+  "暴涨": { color: "#FF4D6A", bg: "rgba(255,77,106,0.12)", label: "暴涨" },
+  "潜力黑马": { color: "#A855F7", bg: "rgba(168,85,247,0.12)", label: "潜力黑马" },
+  "平稳": { color: "#8B92A8", bg: "rgba(139,146,168,0.12)", label: "平稳" },
+  "降温": { color: "#3B82F6", bg: "rgba(59,130,246,0.12)", label: "降温" },
+};
 
-function getHeatColor(score: number): string {
-  if (score >= 70) return "#FF6B35";
-  if (score >= 40) return "#FFB347";
+// Score color
+function getScoreColor(score: number): string {
+  if (score >= 75) return "#FF4D6A";
+  if (score >= 50) return "#FFB347";
+  if (score >= 30) return "#00D4FF";
   return "#8B92A8";
 }
 
-function getHeatLabel(score: number): string {
-  if (score >= 70) return "爆款";
-  if (score >= 40) return "较高";
-  return "一般";
-}
-
-// P1-8: Standardized time format (24h relative, beyond absolute with year)
 function formatPublishTime(raw: string): string {
   if (!raw || raw === "今日") return "今日";
   try {
@@ -71,7 +70,6 @@ function formatPublishTime(raw: string): string {
     if (diffHours < 24) return `${diffHours}小时前`;
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays < 7) return `${diffDays}天前`;
-    // Absolute date with year
     const year = date.getFullYear();
     const nowYear = now.getFullYear();
     if (year === nowYear) {
@@ -131,23 +129,25 @@ function AngleCopyButton({ text }: { text: string }) {
   );
 }
 
-export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGenerate }: ResultCardProps) {
+export function ResultCard({ topic, index, isFavorited, isDone, onToggleFavorite, onGenerate, onIgnore, onMarkDone }: ResultCardProps) {
   const style = platformStyles[topic.source] || { ...defaultPlatform, icon: topic.source.charAt(0) };
   const formattedTime = formatPublishTime(topic.publishTime);
-  const heatEmojis = getHeatEmojis(topic.heatScore);
-  const heatColor = getHeatColor(topic.heatScore);
-  const heatLabel = getHeatLabel(topic.heatScore);
+  const trendStyle = trendTagStyles[topic.trendTag] || trendTagStyles["平稳"];
+  const scoreColor = getScoreColor(topic.score);
   const { isDark } = useTheme();
-  const [showHeatTooltip, setShowHeatTooltip] = useState(false);
 
+  const topicKey = topic.url || topic.id;
   const anglesText = topic.angles.map((a, i) => `${i + 1}. ${a}`).join("\n");
   const fullCopyText = [
     `#${index + 1} ${topic.title}`,
-    `来源: ${topic.source} | 热度: ${topic.heatScore} (${heatLabel})`,
+    `来源: ${topic.source} | 热度: ${topic.heatScore} | 评分: ${topic.score}`,
+    `趋势: ${topic.trendTag} | 风险: ${topic.riskLevel}`,
     topic.url ? `链接: ${topic.url}` : "",
     "",
     "创作切入角度:",
     anglesText,
+    "",
+    topic.relatedWords.length > 0 ? `关联词: ${topic.relatedWords.join("、")}` : "",
   ].filter(Boolean).join("\n");
 
   const [allCopied, setAllCopied] = useState(false);
@@ -159,6 +159,8 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
 
   return (
     <article className={`group rounded-2xl border backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 ${
+      isDone ? "opacity-50" : ""
+    } ${
       isDark
         ? "border-[rgba(0,212,255,0.1)] bg-[#1A1F2E]/70 hover:border-[rgba(0,212,255,0.3)] hover:shadow-[0_4px_24px_rgba(0,0,0,0.3),0_0_20px_rgba(0,212,255,0.06)]"
         : "border-gray-200 bg-white shadow-sm hover:border-[#00B4D8]/30 hover:shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_12px_rgba(0,180,216,0.06)]"
@@ -182,49 +184,57 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
               ) : topic.title}
             </h3>
 
-            {/* Meta row */}
+            {/* Meta row: source + trend tag + score + time */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ color: style.color, backgroundColor: style.bg }}>
                 {style.icon} {topic.source}
               </span>
-              {/* P1-3: Heat with tooltip */}
-              <span
-                className="relative inline-flex items-center gap-1 text-xs"
-                onMouseEnter={() => setShowHeatTooltip(true)}
-                onMouseLeave={() => setShowHeatTooltip(false)}
-              >
-                <RadarPulseDot color={heatColor} className="h-1.5 w-1.5" />
-                <span style={{ color: heatColor }}>{heatEmojis}</span>
+              {/* v2.1: Trend tag */}
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ color: trendStyle.color, backgroundColor: trendStyle.bg }}>
+                {trendStyle.label}
+              </span>
+              {/* v2.1: Score */}
+              <span className="inline-flex items-center gap-1 text-xs" title={topic.scoreReason}>
+                <span className="font-semibold" style={{ color: scoreColor }}>{topic.score}</span>
+                <span className={`text-[10px] ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>分</span>
+              </span>
+              {/* Heat */}
+              <span className="inline-flex items-center gap-1 text-xs">
+                <RadarPulseDot color={topic.heatScore >= 70 ? "#FF6B35" : topic.heatScore >= 40 ? "#FFB347" : "#8B92A8"} className="h-1.5 w-1.5" />
                 <span className={`text-[11px] ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>{topic.heatScore}</span>
-                {showHeatTooltip && (
-                  <span className={`absolute bottom-full left-0 z-20 mb-2 w-48 rounded-lg border p-2.5 text-[11px] leading-relaxed shadow-xl ${
-                    isDark ? "border-[rgba(0,212,255,0.15)] bg-[#1A1F2E] text-[#8B92A8]" : "border-gray-200 bg-white text-gray-500"
-                  }`}>
-                    <span className={`block font-medium ${isDark ? "text-white" : "text-gray-900"}`}>热度指数: {topic.heatScore} ({heatLabel})</span>
-                    <span className="mt-1 block">综合互动量、搜索指数、传播速度、时效加权计算</span>
-                    <span className="mt-1 block">{'< 40 一般 · 40-70 较高 · > 70 爆款'}</span>
-                  </span>
-                )}
               </span>
               <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{formattedTime}</span>
-              {/* P1-7: Promotional tag */}
+              {/* Promotional tag */}
               {topic.isPromotional && (
                 <span className="inline-flex items-center rounded-md bg-[#FF6B35]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#FF6B35]">
                   疑似推广
                 </span>
               )}
-              {/* P2-10: Matched queries tag */}
-              {topic.matchedQueries && topic.matchedQueries.length > 1 && (
-                <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] ${
-                  isDark ? "bg-[#00D4FF]/8 text-[#00D4FF]/60" : "bg-blue-50 text-blue-400"
-                }`}>
-                  同时命中 {topic.matchedQueries.length} 个查询
-                </span>
-              )}
             </div>
+
+            {/* v2.1: Score reason */}
+            {topic.scoreReason && (
+              <p className={`mt-1.5 text-xs leading-relaxed ${isDark ? "text-[#8B92A8]/70" : "text-gray-500"}`}>
+                {topic.scoreReason}
+              </p>
+            )}
+
+            {/* v2.1: Risk warning */}
+            {(topic.riskLevel === "中" || topic.riskLevel === "高") && (
+              <div className={`mt-2 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs ${
+                topic.riskLevel === "高"
+                  ? (isDark ? "bg-[rgba(255,77,106,0.08)] text-[#FF4D6A]" : "bg-red-50 text-red-500")
+                  : (isDark ? "bg-[rgba(255,179,71,0.08)] text-[#FFB347]" : "bg-amber-50 text-amber-600")
+              }`}>
+                <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <span>{topic.riskLevel === "高" ? "涉及敏感话题，谨慎创作" : "需注意措辞，避免争议"}</span>
+              </div>
+            )}
           </div>
 
-          {/* P1-4: Favorite button always visible on mobile */}
+          {/* Action buttons */}
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
@@ -233,13 +243,43 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
                 isFavorited
                   ? "text-[#00D4FF]"
                   : isDark
-                    ? "text-[#8B92A8]/40 hover:text-[#00D4FF] sm:opacity-0 sm:group-hover:opacity-100"
-                    : "text-gray-300 hover:text-[#00B4D8] sm:opacity-0 sm:group-hover:opacity-100"
+                    ? "text-[#8B92A8]/40 hover:text-[#00D4FF]"
+                    : "text-gray-300 hover:text-[#00B4D8]"
               }`}
-              title={isFavorited ? "取消收藏" : "收藏"}
+              title={isFavorited ? "取消收藏" : "收藏到灵感库"}
             >
               <svg className="h-4 w-4" fill={isFavorited ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={isFavorited ? 0 : 1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.06.472 1.736 1.55 1.736 2.74v13.876c0 1.19-.676 2.268-1.736 2.74l-7.5 3.33a.75.75 0 0 1-.612 0l-7.5-3.33c-1.06-.472-1.736-1.55-1.736-2.74V6.062c0-1.19.676-2.268 1.736-2.74l7.5-3.33a.75.75 0 0 1 .612 0l7.5 3.33Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => onMarkDone(topicKey)}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
+                isDone
+                  ? "text-[#00E5A0]"
+                  : isDark
+                    ? "text-[#8B92A8]/40 hover:text-[#00E5A0]"
+                    : "text-gray-300 hover:text-green-500"
+              }`}
+              title={isDone ? "取消已做过标记" : "标记已做过"}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => onIgnore(topicKey)}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
+                isDark
+                  ? "text-[#8B92A8]/40 hover:text-[#FF4D6A]"
+                  : "text-gray-300 hover:text-red-400"
+              }`}
+              title="忽略此话题"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
@@ -256,7 +296,7 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
         {topic.angles.length > 0 && (
           <div className={`mt-4 border-t pt-3 ${isDark ? "border-[rgba(0,212,255,0.06)]" : "border-gray-100"}`}>
             <div className="mb-2 flex items-center justify-between">
-              <span className={`text-xs font-medium ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>创作切入角度</span>
+              <span className={`text-xs font-medium ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>AI 拆解 · 创作切入角度</span>
               <button
                 type="button"
                 onClick={handleCopyAll}
@@ -288,6 +328,24 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
                   <span className={`text-sm leading-relaxed ${isDark ? "text-white/80" : "text-gray-700"}`}>{angle}</span>
                   <AngleCopyButton text={angle} />
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* v2.1: Related words (long-tail keywords) */}
+        {topic.relatedWords.length > 0 && (
+          <div className={`mt-3 border-t pt-3 ${isDark ? "border-[rgba(0,212,255,0.06)]" : "border-gray-100"}`}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`text-[11px] ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>长尾词：</span>
+              {topic.relatedWords.map((word, i) => (
+                <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] ${
+                  isDark
+                    ? "bg-[#252B3D] text-[#8B92A8]"
+                    : "bg-gray-100 text-gray-500"
+                }`}>
+                  {word}
+                </span>
               ))}
             </div>
           </div>

@@ -13,6 +13,9 @@ import { FavoritesModal } from "@/components/favorites-modal";
 import { RadarIcon, RadarBackground } from "@/components/radar-icon";
 
 export type FavoriteStatus = "draft" | "scheduled" | "published";
+export type TrendTag = "暴涨" | "平稳" | "降温" | "潜力黑马";
+export type RiskLevel = "低" | "中" | "高";
+export type ResultTab = "all" | "potential" | "risk";
 
 export interface TopicAngle {
   id: string;
@@ -23,11 +26,18 @@ export interface TopicAngle {
   heatScore: number;
   heatLevel: "high" | "medium" | "low";
   publishTime: string;
+  trendTag: TrendTag;
+  score: number;
+  scoreReason: string;
   angles: string[];
+  relatedWords: string[];
+  riskLevel: RiskLevel;
   isPromotional?: boolean;
   matchedQueries?: string[];
   status?: FavoriteStatus;
   scheduledDate?: string;
+  note?: string;
+  customTags?: string[];
 }
 
 interface TrendDataPoint {
@@ -46,22 +56,27 @@ export interface SearchResponse {
 type TimeRange = "6h" | "1d" | "7d";
 type SortBy = "latest" | "hottest";
 
-const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
-  { value: "6h", label: "近6小时" },
-  { value: "1d", label: "近24小时" },
-  { value: "7d", label: "近7天" },
+const TIME_RANGE_OPTIONS: { value: TimeRange; label: string; desc: string }[] = [
+  { value: "6h", label: "近6小时", desc: "追突发热点" },
+  { value: "1d", label: "近24小时", desc: "日常选题" },
+  { value: "7d", label: "近7天", desc: "中长周期策划" },
 ];
 const TIME_RANGE_LABELS: Record<TimeRange, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
 
 const PLATFORM_FILTERS = ["全部", "抖音", "小红书", "微博", "百度", "知乎"];
-const HOT_KEYWORDS = ["AI工具", "副业", "搞钱", "减肥", "护肤", "职场", "育儿", "考研", "买房", "理财"];
+const SYSTEM_TRACKS = ["AI工具", "副业", "搞钱", "减肥", "护肤", "职场", "育儿", "考研", "买房", "理财"];
+const HOT_KEYWORDS = SYSTEM_TRACKS;
 
 const HISTORY_KEY = "hotspot_search_history";
-const FAVORITES_KEY = "hotspot_favorites";
+const FAVORITES_KEY = "hotspot_favorites_v2";
+const CUSTOM_TRACKS_KEY = "hotspot_custom_tracks";
+const IGNORED_TOPICS_KEY = "hotspot_ignored_topics";
+const DONE_TOPICS_KEY = "hotspot_done_topics";
 const MAX_HISTORY = 10;
 const REQUEST_COUNT = 50;
 const CACHE_TTL = 5 * 60 * 1000;
-const APP_VERSION = "v2.0.0";
+const APP_VERSION = "v2.1.0";
+const SCAN_TIMEOUT_MS = 25000;
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -85,6 +100,7 @@ function InnerApp() {
 
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState("");
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
@@ -100,6 +116,14 @@ function InnerApp() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [displayCount, setDisplayCount] = useState(20);
   const [showHotOnly, setShowHotOnly] = useState(false);
+  // v2.1: New states
+  const [resultTab, setResultTab] = useState<ResultTab>("all");
+  const [customTracks, setCustomTracks] = useState<string[]>([]);
+  const [ignoredTopics, setIgnoredTopics] = useState<Set<string>>(new Set());
+  const [doneTopics, setDoneTopics] = useState<Set<string>>(new Set());
+  const [trackFilter, setTrackFilter] = useState<string>("全部");
+  const [newTrackInput, setNewTrackInput] = useState("");
+  const [showNewTrackInput, setShowNewTrackInput] = useState(false);
   // P2-3: Trend compare state
   const [compareKeywords, setCompareKeywords] = useState<string[]>([]);
   const [compareData, setCompareData] = useState<{ trends: KeywordTrend[]; conclusion: string; xLabels: string[] } | null>(null);
@@ -110,6 +134,7 @@ function InnerApp() {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const cacheRef = useRef<{ key: string; data: SearchResponse; timestamp: number } | null>(null);
   const hasInitialized = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load from localStorage with P0-2 migration (dedup by URL)
   useEffect(() => {
@@ -124,6 +149,11 @@ function InnerApp() {
     });
     setFavorites(deduped);
     if (deduped.length !== loadedFavs.length) saveToStorage(FAVORITES_KEY, deduped);
+    setCustomTracks(loadFromStorage<string[]>(CUSTOM_TRACKS_KEY, []));
+    const ignored = loadFromStorage<string[]>(IGNORED_TOPICS_KEY, []);
+    setIgnoredTopics(new Set(ignored));
+    const done = loadFromStorage<string[]>(DONE_TOPICS_KEY, []);
+    setDoneTopics(new Set(done));
   }, []);
 
   // Close dropdowns on outside click
@@ -158,7 +188,7 @@ function InnerApp() {
     window.history.replaceState({}, "", qs ? `?${qs}` : window.location.pathname);
   }, []);
 
-  // P0-1: Core search with P2-8 cache support
+  // v2.1: Core search with loading phases + timeout
   const doSearch = useCallback(async (kw: string, range: TimeRange, count: number) => {
     const trimmed = kw.trim();
     if (!trimmed) { setInputError("请输入话题关键词再采集"); return; }
@@ -174,6 +204,7 @@ function InnerApp() {
       setDisplayCount(20);
       setPlatformFilter("全部");
       setShowHotOnly(false);
+      setResultTab("all");
       return;
     }
 
@@ -184,6 +215,23 @@ function InnerApp() {
     setPlatformFilter("全部");
     setShowHotOnly(false);
     setShowMobileMenu(false);
+    setResultTab("all");
+
+    // Loading phases
+    setLoadingPhase("正在聚合全网热点...");
+    const phaseTimer1 = setTimeout(() => setLoadingPhase("AI 解析选题角度..."), 4000);
+    const phaseTimer2 = setTimeout(() => setLoadingPhase("生成评分与长尾词..."), 9000);
+
+    // Timeout handling (25s)
+    let timedOut = false;
+    timeoutRef.current = setTimeout(() => {
+      timedOut = true;
+      setLoading(false);
+      setLoadingPhase("");
+      setNetworkError("扫描超时，请缩小时间范围或更换关键词重试");
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+    }, SCAN_TIMEOUT_MS);
 
     try {
       const response = await fetch("/api/search", {
@@ -191,16 +239,24 @@ function InnerApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword: trimmed, timeRange: range, count }),
       });
+      if (timedOut) return;
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
         throw new Error(errData?.error || `请求失败 (${response.status})`);
       }
       const data: SearchResponse = await response.json();
       setResults(data);
-      cacheRef.current = { key: cacheKey, data, timestamp: now };
+      cacheRef.current = { key: cacheKey, data, timestamp: Date.now() };
       if (data.topics.length > 0) addToHistory(trimmed);
       updateUrl(trimmed, range);
     } catch (err: unknown) {
+      if (timedOut) return;
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+      clearTimeout(phaseTimer1);
+      clearTimeout(phaseTimer2);
       const message = err instanceof Error ? err.message : "";
       if (message.includes("Failed to fetch") || message.includes("NetworkError") || !message) {
         setNetworkError("网络异常，请稍后重试");
@@ -208,7 +264,10 @@ function InnerApp() {
         setNetworkError(message || "搜索服务暂时不可用，请稍后重试");
       }
     } finally {
-      setLoading(false);
+      if (!timedOut) {
+        setLoading(false);
+        setLoadingPhase("");
+      }
     }
   }, [addToHistory, updateUrl]);
 
@@ -377,15 +436,98 @@ function InnerApp() {
     });
   }, []);
 
-  // Filtered, sorted, and sliced results
+  // v2.1: Update note on a favorite
+  const handleUpdateNote = useCallback((key: string, note: string) => {
+    setFavorites(prev => {
+      const next = prev.map(f => favKey(f) === key ? { ...f, note } : f);
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
+  }, []);
+
+  // v2.1: Update custom tags on a favorite
+  const handleUpdateTags = useCallback((key: string, tags: string[]) => {
+    setFavorites(prev => {
+      const next = prev.map(f => favKey(f) === key ? { ...f, customTags: tags } : f);
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
+  }, []);
+
+  // v2.1: Import favorites from JSON
+  const handleImportFavorites = useCallback((items: TopicAngle[]) => {
+    setFavorites(prev => {
+      const existingUrls = new Set(prev.map(f => f.url).filter(Boolean));
+      const newItems = items.filter(item => !existingUrls.has(item.url));
+      const next = [...prev, ...newItems];
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
+  }, []);
+
+  // v2.1: Ignore a topic (remove from current list)
+  const handleIgnoreTopic = useCallback((topicKey: string) => {
+    setIgnoredTopics(prev => {
+      const next = new Set(prev);
+      next.add(topicKey);
+      saveToStorage(IGNORED_TOPICS_KEY, Array.from(next));
+      return next;
+    });
+  }, []);
+
+  // v2.1: Mark topic as done (greyed out in results)
+  const handleMarkDone = useCallback((topicKey: string) => {
+    setDoneTopics(prev => {
+      const next = new Set(prev);
+      if (next.has(topicKey)) { next.delete(topicKey); } else { next.add(topicKey); }
+      saveToStorage(DONE_TOPICS_KEY, Array.from(next));
+      return next;
+    });
+  }, []);
+
+  // v2.1: Custom tracks management
+  const handleAddCustomTrack = useCallback((track: string) => {
+    const trimmed = track.trim();
+    if (!trimmed) return;
+    if (SYSTEM_TRACKS.includes(trimmed) || customTracks.includes(trimmed)) return;
+    const next = [...customTracks, trimmed];
+    setCustomTracks(next);
+    saveToStorage(CUSTOM_TRACKS_KEY, next);
+    setNewTrackInput("");
+    setShowNewTrackInput(false);
+  }, [customTracks]);
+
+  const handleRemoveCustomTrack = useCallback((track: string) => {
+    const next = customTracks.filter(t => t !== track);
+    setCustomTracks(next);
+    saveToStorage(CUSTOM_TRACKS_KEY, next);
+    if (trackFilter === track) setTrackFilter("全部");
+  }, [customTracks, trackFilter]);
+
+  // v2.1: Filtered, sorted, sliced results with tab/track/ignored filtering
   const displayedTopics = useMemo(() => {
     if (!results) return [];
-    let filtered = results.topics;
+    let filtered = results.topics.filter(t => !ignoredTopics.has(t.url || t.id));
     if (platformFilter !== "全部") {
       filtered = filtered.filter(t => t.source.includes(platformFilter));
     }
     if (showHotOnly) {
       filtered = filtered.filter(t => t.heatScore >= 70);
+    }
+    // v2.1: Tab filter
+    if (resultTab === "potential") {
+      filtered = filtered.filter(t => t.trendTag === "潜力黑马");
+    } else if (resultTab === "risk") {
+      filtered = filtered.filter(t => t.riskLevel === "中" || t.riskLevel === "高");
+    }
+    // v2.1: Track filter
+    if (trackFilter !== "全部") {
+      const lower = trackFilter.toLowerCase();
+      filtered = filtered.filter(t =>
+        t.title.toLowerCase().includes(lower) ||
+        t.snippet.toLowerCase().includes(lower) ||
+        t.relatedWords.some(w => w.toLowerCase().includes(lower))
+      );
     }
     const sorted = [...filtered];
     if (sortBy === "latest") {
@@ -394,10 +536,21 @@ function InnerApp() {
       sorted.sort((a, b) => b.heatScore - a.heatScore);
     }
     return sorted;
-  }, [results, platformFilter, sortBy, showHotOnly]);
+  }, [results, platformFilter, sortBy, showHotOnly, resultTab, trackFilter, ignoredTopics]);
 
   const visibleTopics = displayedTopics.slice(0, displayCount);
   const hasMore = displayedTopics.length > displayCount;
+
+  // v2.1: Tab counts
+  const potentialCount = useMemo(() => {
+    if (!results) return 0;
+    return results.topics.filter(t => !ignoredTopics.has(t.url || t.id) && t.trendTag === "潜力黑马").length;
+  }, [results, ignoredTopics]);
+
+  const riskCount = useMemo(() => {
+    if (!results) return 0;
+    return results.topics.filter(t => !ignoredTopics.has(t.url || t.id) && (t.riskLevel === "中" || t.riskLevel === "高")).length;
+  }, [results, ignoredTopics]);
 
   const isFavorited = useCallback(
     (topic: TopicAngle) => favorites.some(f => favKey(f) === favKey(topic)),
@@ -660,7 +813,7 @@ function InnerApp() {
         </section>
 
         {/* Loading */}
-        {loading && <LoadingSkeleton />}
+        {loading && <LoadingSkeleton phase={loadingPhase} />}
 
         {/* Error */}
         {networkError && !loading && <EmptyState variant="error" message={networkError} onRetry={handleSubmit} />}
@@ -680,6 +833,104 @@ function InnerApp() {
                 找到 <span className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>{displayedTopics.length}</span> 条相关热点
                 <span className={`ml-1.5 text-xs ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>{TIME_RANGE_LABELS[timeRange]}</span>
               </p>
+            </div>
+
+            {/* v2.1: Tab bar (全部 | 潜力热点 | 风险提示) */}
+            <div className={`mb-3 flex items-center gap-1 overflow-x-auto scrollbar-none rounded-xl border p-1.5 no-print ${
+              isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/30" : "border-gray-100 bg-white shadow-sm"
+            }`}>
+              {([
+                { key: "all" as ResultTab, label: "全部", count: displayedTopics.length },
+                { key: "potential" as ResultTab, label: "📈 潜力热点", count: potentialCount },
+                { key: "risk" as ResultTab, label: "⚠️ 风险提示", count: riskCount },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => { setResultTab(tab.key); setDisplayCount(20); }}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                    resultTab === tab.key
+                      ? (isDark ? "bg-[#00D4FF]/15 text-[#00D4FF]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
+                      : (isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700")
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count > 0 && <span className="ml-1 text-[10px] opacity-60">({tab.count})</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* v2.1: Track filter bar */}
+            <div className={`mb-4 flex flex-wrap items-center gap-1.5 no-print`}>
+              <button
+                type="button"
+                onClick={() => setTrackFilter("全部")}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
+                  trackFilter === "全部"
+                    ? (isDark ? "bg-[#252B3D] text-white" : "bg-gray-200 text-gray-800")
+                    : (isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700")
+                }`}
+              >全部赛道</button>
+              {SYSTEM_TRACKS.map(track => (
+                <button
+                  key={track}
+                  type="button"
+                  onClick={() => setTrackFilter(track === trackFilter ? "全部" : track)}
+                  className={`rounded-full border px-2.5 py-1 text-xs transition-all ${
+                    trackFilter === track
+                      ? (isDark ? "border-[#00D4FF]/40 bg-[#00D4FF]/10 text-[#00D4FF]" : "border-[#00B4D8]/40 bg-blue-50 text-[#00B4D8]")
+                      : (isDark ? "border-[rgba(0,212,255,0.1)] text-[#8B92A8] hover:border-[#00D4FF]/30 hover:text-white" : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700")
+                  }`}
+                >{track}</button>
+              ))}
+              {/* Custom tracks */}
+              {customTracks.map(track => (
+                <span key={track} className="group/track relative inline-flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setTrackFilter(track === trackFilter ? "全部" : track)}
+                    className={`rounded-full border border-dashed px-2.5 py-1 text-xs transition-all ${
+                      trackFilter === track
+                        ? (isDark ? "border-[#A855F7]/40 bg-[#A855F7]/10 text-[#A855F7]" : "border-purple-300 bg-purple-50 text-purple-600")
+                        : (isDark ? "border-[rgba(168,85,247,0.2)] text-[#8B92A8] hover:border-[#A855F7]/30 hover:text-white" : "border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700")
+                    }`}
+                  >{track}</button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCustomTrack(track)}
+                    className={`ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] transition-all ${
+                      isDark ? "text-[#8B92A8]/40 hover:text-[#FF4D6A]" : "text-gray-300 hover:text-red-400"
+                    }`}
+                    title="删除此赛道"
+                  >×</button>
+                </span>
+              ))}
+              {/* Add custom track */}
+              {showNewTrackInput ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newTrackInput}
+                    onChange={(e) => setNewTrackInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && newTrackInput.trim()) handleAddCustomTrack(newTrackInput); if (e.key === "Escape") { setShowNewTrackInput(false); setNewTrackInput(""); } }}
+                    placeholder="输入赛道名"
+                    autoFocus
+                    className={`h-7 w-24 rounded-lg border px-2 text-xs outline-none ${
+                      isDark ? "border-[rgba(0,212,255,0.15)] bg-[#12162A] text-white placeholder:text-[#8B92A8]/40" : "border-gray-200 bg-white text-gray-900 placeholder:text-gray-400"
+                    }`}
+                  />
+                  <button type="button" onClick={() => newTrackInput.trim() && handleAddCustomTrack(newTrackInput)} className="text-xs text-[#00D4FF]">确定</button>
+                  <button type="button" onClick={() => { setShowNewTrackInput(false); setNewTrackInput(""); }} className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-400"}`}>取消</button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowNewTrackInput(true)}
+                  className={`rounded-full border border-dashed px-2 py-1 text-xs transition-all ${
+                    isDark ? "border-[rgba(0,212,255,0.15)] text-[#8B92A8]/50 hover:border-[#00D4FF]/30 hover:text-[#00D4FF]" : "border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                  }`}
+                >+ 我的赛道</button>
+              )}
             </div>
 
             {/* Platform filter + Sort + P2-1: Hot only toggle */}
@@ -807,8 +1058,11 @@ function InnerApp() {
                   topic={topic}
                   index={index}
                   isFavorited={isFavorited(topic)}
+                  isDone={doneTopics.has(topic.url || topic.id)}
                   onToggleFavorite={handleToggleFavorite}
                   onGenerate={setGenerateTarget}
+                  onIgnore={handleIgnoreTopic}
+                  onMarkDone={handleMarkDone}
                 />
               ))}
             </div>
@@ -845,14 +1099,11 @@ function InnerApp() {
         )}
       </main>
 
-      {/* P2-9: Footer with feedback + version */}
+      {/* Footer */}
       <footer className="py-3 no-print">
         <div className="flex flex-col items-center gap-1">
-          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/30" : "text-gray-300"}`}>
-            数据来源：全网公开热点信息聚合（资讯+社交平台） | 仅供选题参考
-          </p>
-          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/20" : "text-gray-300/60"}`}>
-            选题雷达 {APP_VERSION} · 收藏数据存储于本地浏览器
+          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/30" : "text-gray-400"}`}>
+            选题雷达 {APP_VERSION} · 收藏数据存储于本地浏览器，清理浏览器缓存将丢失收藏，请定期导出备份。数据来源：全网公开热点信息聚合（资讯+社交平台）｜仅供选题参考
           </p>
         </div>
       </footer>
@@ -874,6 +1125,9 @@ function InnerApp() {
         onClear={handleClearFavorites}
         onUpdateStatus={handleUpdateFavoriteStatus}
         onSchedule={handleScheduleFavorite}
+        onUpdateNote={handleUpdateNote}
+        onUpdateTags={handleUpdateTags}
+        onImport={handleImportFavorites}
       />
     </div>
   );
