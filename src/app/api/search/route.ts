@@ -146,7 +146,7 @@ ${topicsDescription}
 
 export async function POST(request: NextRequest) {
   try {
-    const { keyword } = await request.json();
+    const { keyword, timeRange } = await request.json();
 
     if (!keyword || typeof keyword !== "string" || keyword.trim().length === 0) {
       return NextResponse.json(
@@ -156,6 +156,10 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedKeyword = keyword.trim();
+    const validTimeRanges = ["6h", "1d", "7d"] as const;
+    const resolvedTimeRange = validTimeRanges.includes(timeRange as typeof validTimeRanges[number])
+      ? (timeRange as string)
+      : "1d";
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
     const searchConfig = new SearchConfig();
@@ -170,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     const searchPromises = searchQueries.map((query) =>
       searchClient.advancedSearch(query, {
-        timeRange: "1d",
+        timeRange: resolvedTimeRange,
         count: 10,
         needSummary: false,
       }).catch((err: unknown) => {
@@ -233,10 +237,12 @@ export async function POST(request: NextRequest) {
     const topItems = allItems.slice(0, 10);
 
     if (topItems.length === 0) {
+      const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
+      const timeLabel = timeLabels[resolvedTimeRange] || "近24小时";
       return NextResponse.json({
         keyword: trimmedKeyword,
         topics: [],
-        message: `未找到与「${trimmedKeyword}」相关的近24小时热点内容，请尝试其他关键词`,
+        message: `暂未搜到「${trimmedKeyword}」在${timeLabel}内的相关热点，试试更换其他关键词或扩大时间范围`,
       });
     }
 
