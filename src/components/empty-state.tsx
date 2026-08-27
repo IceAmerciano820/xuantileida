@@ -8,11 +8,12 @@ interface EmptyStateProps {
   message?: string;
   onKeywordClick?: (keyword: string) => void;
   onRetry?: () => void;
+  onExplore?: () => void;
 }
 
 const RECOMMENDED_KEYWORDS = ["AI工具", "副业", "搞钱"];
 
-export function EmptyState({ variant = "initial", message, onKeywordClick, onRetry }: EmptyStateProps) {
+export function EmptyState({ variant = "initial", message, onKeywordClick, onRetry, onExplore }: EmptyStateProps) {
   const { isDark } = useTheme();
 
   if (variant === "error") {
@@ -73,7 +74,7 @@ export function EmptyState({ variant = "initial", message, onKeywordClick, onRet
     );
   }
 
-  // Initial state
+  // P1-1: Initial state with "随便看看" button
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className={`mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border ${
@@ -85,8 +86,22 @@ export function EmptyState({ variant = "initial", message, onKeywordClick, onRet
         输入关键词，开始雷达扫描
       </h3>
       <p className={`max-w-xs text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
-        聚合微博、知乎、抖音、小红书等多平台热点，为内容创作提供选题灵感
+        聚合全网公开热点（资讯+社交平台），为内容创作提供选题灵感
       </p>
+      {onExplore && (
+        <button
+          type="button"
+          onClick={onExplore}
+          className={`mt-5 inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-medium transition-all hover:scale-[1.02] ${
+            isDark
+              ? "border-[#00D4FF]/30 text-[#00D4FF] hover:border-[#00D4FF]/50 hover:bg-[#00D4FF]/5 hover:shadow-[0_0_12px_rgba(0,212,255,0.15)]"
+              : "border-[#00B4D8]/30 text-[#00B4D8] hover:border-[#00B4D8]/50 hover:bg-blue-50"
+          }`}
+        >
+          <RadarIcon size={16} />
+          随便看看
+        </button>
+      )}
     </div>
   );
 }

@@ -21,6 +21,13 @@ export interface TopicAngle {
   heatLevel: "high" | "medium" | "low";
   publishTime: string;
   angles: string[];
+  isPromotional?: boolean;
+  matchedQueries?: string[];
+}
+
+interface TrendDataPoint {
+  date: string;
+  score: number;
 }
 
 export interface SearchResponse {
@@ -28,11 +35,11 @@ export interface SearchResponse {
   topics: TopicAngle[];
   totalFound?: number;
   message?: string;
+  trendData?: TrendDataPoint[];
 }
 
 type TimeRange = "6h" | "1d" | "7d";
 type SortBy = "latest" | "hottest";
-type ContentType = "xiaohongshu" | "douyin" | "gongzhonghao";
 
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: "6h", label: "近6小时" },
@@ -47,6 +54,9 @@ const HOT_KEYWORDS = ["AI工具", "副业", "搞钱", "减肥", "护肤", "职�
 const HISTORY_KEY = "hotspot_search_history";
 const FAVORITES_KEY = "hotspot_favorites";
 const MAX_HISTORY = 10;
+const REQUEST_COUNT = 30;
+const CACHE_TTL = 5 * 60 * 1000;
+const APP_VERSION = "v2.0.0";
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -59,6 +69,10 @@ function loadFromStorage<T>(key: string, fallback: T): T {
 
 function saveToStorage(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
+function favKey(topic: TopicAngle): string {
+  return topic.url || topic.id;
 }
 
 function InnerApp() {
@@ -79,13 +93,26 @@ function InnerApp() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [generateTarget, setGenerateTarget] = useState<TopicAngle | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [displayCount, setDisplayCount] = useState(10);
+  const [showHotOnly, setShowHotOnly] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const cacheRef = useRef<{ key: string; data: SearchResponse; timestamp: number } | null>(null);
+  const hasInitialized = useRef(false);
 
-  // Load from localStorage
+  // Load from localStorage with P0-2 migration (dedup by URL)
   useEffect(() => {
     setHistory(loadFromStorage<string[]>(HISTORY_KEY, []));
-    setFavorites(loadFromStorage<TopicAngle[]>(FAVORITES_KEY, []));
+    const loadedFavs = loadFromStorage<TopicAngle[]>(FAVORITES_KEY, []);
+    const seen = new Set<string>();
+    const deduped = loadedFavs.filter(f => {
+      const key = favKey(f);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    setFavorites(deduped);
+    if (deduped.length !== loadedFavs.length) saveToStorage(FAVORITES_KEY, deduped);
   }, []);
 
   // Close dropdowns on outside click
@@ -111,23 +138,47 @@ function InnerApp() {
     saveToStorage(HISTORY_KEY, []);
   }, []);
 
-  const handleSearch = useCallback(async (kw: string) => {
+  const updateUrl = useCallback((kw: string, range: TimeRange) => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (kw) params.set("keyword", kw);
+    if (range !== "1d") params.set("range", range);
+    const qs = params.toString();
+    window.history.replaceState({}, "", qs ? `?${qs}` : window.location.pathname);
+  }, []);
+
+  // P0-1: Core search with P2-8 cache support
+  const doSearch = useCallback(async (kw: string, range: TimeRange, count: number) => {
     const trimmed = kw.trim();
     if (!trimmed) { setInputError("请输入话题关键词再采集"); return; }
     setInputError(null);
     setNetworkError(null);
+
+    // P2-8: Check cache (5 min)
+    const cacheKey = `${trimmed}:${range}:${count}`;
+    const now = Date.now();
+    if (cacheRef.current && cacheRef.current.key === cacheKey && now - cacheRef.current.timestamp < CACHE_TTL) {
+      setResults(cacheRef.current.data);
+      setSearchedKeyword(trimmed);
+      setDisplayCount(10);
+      setPlatformFilter("全部");
+      setShowHotOnly(false);
+      return;
+    }
+
     setLoading(true);
     setResults(null);
     setSearchedKeyword(trimmed);
+    setDisplayCount(10);
     setPlatformFilter("全部");
-    setSortBy("latest");
+    setShowHotOnly(false);
     setShowMobileMenu(false);
 
     try {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: trimmed, timeRange }),
+        body: JSON.stringify({ keyword: trimmed, timeRange: range, count }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
@@ -135,7 +186,9 @@ function InnerApp() {
       }
       const data: SearchResponse = await response.json();
       setResults(data);
+      cacheRef.current = { key: cacheKey, data, timestamp: now };
       if (data.topics.length > 0) addToHistory(trimmed);
+      updateUrl(trimmed, range);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "";
       if (message.includes("Failed to fetch") || message.includes("NetworkError") || !message) {
@@ -146,25 +199,79 @@ function InnerApp() {
     } finally {
       setLoading(false);
     }
-  }, [timeRange, addToHistory]);
+  }, [addToHistory, updateUrl]);
+
+  // P2-7: Read URL params on mount + P1-1: auto-load default content
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const kw = params.get("keyword");
+    const range = params.get("range") as TimeRange | null;
+    const platform = params.get("platform");
+
+    if (range && ["6h", "1d", "7d"].includes(range)) setTimeRange(range);
+    if (platform && PLATFORM_FILTERS.includes(platform)) setPlatformFilter(platform);
+
+    if (kw) {
+      setKeyword(kw);
+      doSearch(kw, range || "1d", REQUEST_COUNT);
+    } else {
+      // P1-1: Auto-load default content
+      doSearch("今日热点", "1d", REQUEST_COUNT);
+    }
+  }, [doSearch]);
+
+  const handleSearch = useCallback((kw: string) => {
+    doSearch(kw, timeRange, REQUEST_COUNT);
+  }, [doSearch, timeRange]);
+
+  // P0-1: Re-search when time range changes
+  const handleTimeRangeChange = useCallback((newRange: TimeRange) => {
+    setTimeRange(newRange);
+    if (searchedKeyword) {
+      doSearch(searchedKeyword, newRange, REQUEST_COUNT);
+    }
+  }, [searchedKeyword, doSearch]);
 
   const handleSubmit = useCallback(() => { handleSearch(keyword); }, [handleSearch, keyword]);
   const handleKeywordClick = useCallback((kw: string) => { setKeyword(kw); setInputError(null); handleSearch(kw); }, [handleSearch]);
   const handleKeywordFill = useCallback((kw: string) => { setKeyword(kw); setInputError(null); }, []);
 
-  // Favorites
+  // P1-1: "随便看看" handler
+  const handleExplore = useCallback(() => {
+    const randomKw = HOT_KEYWORDS[Math.floor(Math.random() * HOT_KEYWORDS.length)];
+    setKeyword(randomKw);
+    doSearch(randomKw, timeRange, REQUEST_COUNT);
+  }, [doSearch, timeRange]);
+
+  // P1-2: Load more
+  const handleLoadMore = useCallback(() => {
+    setDisplayCount(prev => prev + 10);
+  }, []);
+
+  // P0-2: Favorites by URL
   const handleToggleFavorite = useCallback((topic: TopicAngle) => {
+    const key = favKey(topic);
     setFavorites(prev => {
-      const exists = prev.some(f => f.id === topic.id);
-      const next = exists ? prev.filter(f => f.id !== topic.id) : [topic, ...prev];
-      saveToStorage(FAVORITES_KEY, next);
-      return next;
+      const exists = prev.some(f => favKey(f) === key);
+      const next = exists ? prev.filter(f => favKey(f) !== key) : [topic, ...prev];
+      const seen = new Set<string>();
+      const deduped = next.filter(f => {
+        const k = favKey(f);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      saveToStorage(FAVORITES_KEY, deduped);
+      return deduped;
     });
   }, []);
 
-  const handleRemoveFavorite = useCallback((id: string) => {
+  const handleRemoveFavorite = useCallback((key: string) => {
     setFavorites(prev => {
-      const next = prev.filter(f => f.id !== id);
+      const next = prev.filter(f => favKey(f) !== key);
       saveToStorage(FAVORITES_KEY, next);
       return next;
     });
@@ -175,12 +282,15 @@ function InnerApp() {
     saveToStorage(FAVORITES_KEY, []);
   }, []);
 
-  // Filtered and sorted results
+  // Filtered, sorted, and sliced results
   const displayedTopics = useMemo(() => {
     if (!results) return [];
     let filtered = results.topics;
     if (platformFilter !== "全部") {
       filtered = filtered.filter(t => t.source.includes(platformFilter));
+    }
+    if (showHotOnly) {
+      filtered = filtered.filter(t => t.heatScore >= 70);
     }
     const sorted = [...filtered];
     if (sortBy === "latest") {
@@ -189,9 +299,15 @@ function InnerApp() {
       sorted.sort((a, b) => b.heatScore - a.heatScore);
     }
     return sorted;
-  }, [results, platformFilter, sortBy]);
+  }, [results, platformFilter, sortBy, showHotOnly]);
 
-  const isFavorited = useCallback((id: string) => favorites.some(f => f.id === id), [favorites]);
+  const visibleTopics = displayedTopics.slice(0, displayCount);
+  const hasMore = displayedTopics.length > displayCount;
+
+  const isFavorited = useCallback(
+    (topic: TopicAngle) => favorites.some(f => favKey(f) === favKey(topic)),
+    [favorites]
+  );
 
   // Export functions
   const buildExportText = useCallback(() => {
@@ -290,8 +406,8 @@ function InnerApp() {
 
   return (
     <div className={`relative flex min-h-screen flex-col transition-colors duration-300 ${isDark ? "bg-[#0A0E1A]" : "bg-[#FAFAFA]"}`}>
-      {/* Background radar decoration */}
       <RadarBackground isDark={isDark} />
+
       {/* Header */}
       <header className={`sticky top-0 z-20 border-b backdrop-blur-xl no-print ${
         isDark ? "border-[rgba(0,212,255,0.08)] bg-[#0A0E1A]/90" : "border-gray-200 bg-white/90"
@@ -309,11 +425,11 @@ function InnerApp() {
 
           {/* Desktop toolbar */}
           <div className="hidden items-center gap-2 sm:flex">
-            {/* Time range */}
+            {/* P0-1: Time range with re-search */}
             <div className="relative">
               <select
                 value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+                onChange={(e) => handleTimeRangeChange(e.target.value as TimeRange)}
                 disabled={loading}
                 className={`h-8 appearance-none rounded-lg border py-1.5 pl-2.5 pr-7 text-xs outline-none transition-all focus:border-[#00D4FF]/40 disabled:opacity-50 ${
                   isDark ? "border-[rgba(0,212,255,0.12)] bg-[#12162A] text-[#8B92A8]" : "border-gray-200 bg-white text-gray-600"
@@ -359,7 +475,6 @@ function InnerApp() {
               </div>
             )}
 
-            {/* Theme toggle */}
             <ThemeToggle />
           </div>
 
@@ -384,7 +499,7 @@ function InnerApp() {
                     <p className={`mb-1.5 text-[10px] uppercase tracking-wider ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>时间范围</p>
                     <div className="flex gap-1.5">
                       {TIME_RANGE_OPTIONS.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => setTimeRange(opt.value)} className={`rounded-md px-2.5 py-1 text-xs transition-all ${
+                        <button key={opt.value} type="button" onClick={() => { handleTimeRangeChange(opt.value); setShowMobileMenu(false); }} disabled={loading} className={`rounded-md px-2.5 py-1 text-xs transition-all disabled:opacity-50 ${
                           timeRange === opt.value
                             ? (isDark ? "bg-[#00D4FF]/15 font-medium text-[#00D4FF]" : "bg-[#00B4D8]/15 font-medium text-[#00B4D8]")
                             : (isDark ? "text-[#8B92A8] hover:bg-[#252B3D]" : "text-gray-600 hover:bg-gray-100")
@@ -401,6 +516,7 @@ function InnerApp() {
                       <button type="button" onClick={() => { handleCopyAll(); setShowMobileMenu(false); }} className={`flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>复制全部</button>
                       <button type="button" onClick={() => { handleExportMarkdown(); setShowMobileMenu(false); }} className={`flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>导出 Markdown</button>
                       <button type="button" onClick={() => { handleExportPDF(); setShowMobileMenu(false); }} className={`flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>导出 PDF</button>
+                      <button type="button" onClick={() => { handleDownloadTxt(); setShowMobileMenu(false); }} className={`flex w-full items-center gap-2 border-t px-3 py-2.5 text-left text-xs ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>下载 TXT</button>
                     </>
                   )}
                 </div>
@@ -420,9 +536,8 @@ function InnerApp() {
         }`}>
           <SearchInput value={keyword} onChange={setKeyword} onSubmit={handleSubmit} loading={loading} error={inputError} />
 
-          {/* History + Recommendations row */}
+          {/* History + Recommendations */}
           <div className="mt-3 space-y-2">
-            {/* History */}
             {history.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className={`text-xs ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>历史：</span>
@@ -436,7 +551,6 @@ function InnerApp() {
                 <button type="button" onClick={handleClearHistory} className="ml-1 text-xs text-[#FF4D6A]/50 transition-colors hover:text-[#FF4D6A]">清空</button>
               </div>
             )}
-            {/* Hot recommendations */}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className={`text-xs ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>热门：</span>
               {HOT_KEYWORDS.map((kw) => (
@@ -460,7 +574,7 @@ function InnerApp() {
         {hasNoResults && !loading && <EmptyState variant="no-results" message={results.message} onKeywordClick={handleKeywordClick} />}
 
         {/* Initial */}
-        {!loading && !results && !networkError && <EmptyState variant="initial" />}
+        {!loading && !results && !networkError && <EmptyState variant="initial" onExplore={handleExplore} onKeywordClick={handleKeywordClick} />}
 
         {/* Results */}
         {hasResults && (
@@ -473,11 +587,10 @@ function InnerApp() {
               </p>
             </div>
 
-            {/* Platform filter + Sort */}
+            {/* Platform filter + Sort + P2-1: Hot only toggle */}
             <div className={`mb-4 flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between no-print ${
               isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/30" : "border-gray-100 bg-white shadow-sm"
             }`}>
-              {/* Platform filter */}
               <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
                 {PLATFORM_FILTERS.map((p) => (
                   <button key={p} type="button" onClick={() => setPlatformFilter(p)} className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all ${
@@ -486,8 +599,17 @@ function InnerApp() {
                       : (isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700")
                   }`}>{p}</button>
                 ))}
+                {/* P2-1: Only hot filter */}
+                <button type="button" onClick={() => setShowHotOnly(!showHotOnly)} className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                  showHotOnly
+                    ? "bg-[#FF6B35]/15 text-[#FF6B35] ring-1 ring-[#FF6B35]/30"
+                    : isDark
+                      ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white"
+                      : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                }`}>
+                  {showHotOnly ? "🔥 " : ""}只看爆款
+                </button>
               </div>
-              {/* Sort */}
               <div className="flex items-center gap-1">
                 <span className={`text-xs ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>排序：</span>
                 {(["latest", "hottest"] as SortBy[]).map((s) => (
@@ -500,40 +622,69 @@ function InnerApp() {
               </div>
             </div>
 
-            {/* Heat Trend Chart */}
-            <div className="mb-5 no-print">
-              <HeatTrendChart keyword={searchedKeyword} data={[]} />
-            </div>
+            {/* P2-2: Heat Trend Chart with time range */}
+            {results.trendData && results.trendData.length > 0 && (
+              <div className="mb-5 no-print">
+                <HeatTrendChart keyword={searchedKeyword} data={results.trendData} timeRange={timeRange} />
+              </div>
+            )}
 
             {/* Cards */}
             <div className="space-y-4">
-              {displayedTopics.map((topic, index) => (
+              {visibleTopics.map((topic, index) => (
                 <ResultCard
-                  key={topic.id}
+                  key={favKey(topic)}
                   topic={topic}
                   index={index}
-                  isFavorited={isFavorited(topic.id)}
+                  isFavorited={isFavorited(topic)}
                   onToggleFavorite={handleToggleFavorite}
                   onGenerate={setGenerateTarget}
                 />
               ))}
             </div>
 
-            {displayedTopics.length === 0 && platformFilter !== "全部" && (
+            {/* P1-2: Load more */}
+            {hasMore && (
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition-all hover:scale-[1.02] ${
+                    isDark
+                      ? "border-[#00D4FF]/30 text-[#00D4FF] hover:border-[#00D4FF]/50 hover:bg-[#00D4FF]/5"
+                      : "border-[#00B4D8]/30 text-[#00B4D8] hover:border-[#00B4D8]/50 hover:bg-blue-50"
+                  }`}
+                >
+                  加载更多
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            {/* P1-6: Platform filter empty state */}
+            {visibleTopics.length === 0 && platformFilter !== "全部" && (
               <div className={`py-12 text-center ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
-                <p className="text-sm">该分类下暂无热点</p>
-                <button type="button" onClick={() => setPlatformFilter("全部")} className="mt-2 text-xs text-[#00D4FF] hover:underline">查看全部</button>
+                <p className="text-sm">该平台暂无相关热点</p>
+                <p className="mt-1 text-xs">试试切换其他平台或查看全部</p>
+                <button type="button" onClick={() => setPlatformFilter("全部")} className="mt-3 text-xs text-[#00D4FF] hover:underline">查看全部</button>
               </div>
             )}
           </section>
         )}
       </main>
 
-      {/* Footer */}
+      {/* P2-9: Footer with feedback + version */}
       <footer className="py-3 no-print">
-        <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/30" : "text-gray-300"}`}>
-          数据来源：全网公开热点信息聚合 | 仅供选题参考
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/30" : "text-gray-300"}`}>
+            数据来源：全网公开热点信息聚合（资讯+社交平台） | 仅供选题参考
+          </p>
+          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/20" : "text-gray-300/60"}`}>
+            选题雷达 {APP_VERSION} · 收藏数据存储于本地浏览器
+          </p>
+        </div>
       </footer>
 
       {/* Modals */}

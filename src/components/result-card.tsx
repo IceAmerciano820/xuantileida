@@ -36,15 +36,26 @@ const platformStyles: Record<string, PlatformStyle> = {
 
 const defaultPlatform: PlatformStyle = { icon: "", color: "#00D4FF", bg: "rgba(0,212,255,0.12)" };
 
-function getHeatEmojis(level: string): string {
-  switch (level) {
-    case "high": return "🔥🔥🔥";
-    case "medium": return "🔥🔥";
-    case "low": return "🔥";
-    default: return "🔥🔥";
-  }
+// P2-1: Heat level tiers with colors
+function getHeatEmojis(score: number): string {
+  if (score >= 70) return "🔥🔥🔥";
+  if (score >= 40) return "🔥🔥";
+  return "🔥";
 }
 
+function getHeatColor(score: number): string {
+  if (score >= 70) return "#FF6B35";
+  if (score >= 40) return "#FFB347";
+  return "#8B92A8";
+}
+
+function getHeatLabel(score: number): string {
+  if (score >= 70) return "爆款";
+  if (score >= 40) return "较高";
+  return "一般";
+}
+
+// P1-8: Standardized time format (24h relative, beyond absolute with year)
 function formatPublishTime(raw: string): string {
   if (!raw || raw === "今日") return "今日";
   try {
@@ -52,6 +63,7 @@ function formatPublishTime(raw: string): string {
     if (isNaN(date.getTime())) return raw;
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    if (diffMs < 0) return "刚刚";
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
     if (diffMinutes < 1) return "刚刚";
     if (diffMinutes < 60) return `${diffMinutes}分钟前`;
@@ -59,7 +71,13 @@ function formatPublishTime(raw: string): string {
     if (diffHours < 24) return `${diffHours}小时前`;
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays < 7) return `${diffDays}天前`;
-    return `${date.getMonth() + 1}/${date.getDate()}`;
+    // Absolute date with year
+    const year = date.getFullYear();
+    const nowYear = now.getFullYear();
+    if (year === nowYear) {
+      return `${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
+    }
+    return `${year}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
   } catch {
     return raw;
   }
@@ -116,13 +134,16 @@ function AngleCopyButton({ text }: { text: string }) {
 export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGenerate }: ResultCardProps) {
   const style = platformStyles[topic.source] || { ...defaultPlatform, icon: topic.source.charAt(0) };
   const formattedTime = formatPublishTime(topic.publishTime);
-  const heatEmojis = getHeatEmojis(topic.heatLevel);
+  const heatEmojis = getHeatEmojis(topic.heatScore);
+  const heatColor = getHeatColor(topic.heatScore);
+  const heatLabel = getHeatLabel(topic.heatScore);
   const { isDark } = useTheme();
+  const [showHeatTooltip, setShowHeatTooltip] = useState(false);
 
   const anglesText = topic.angles.map((a, i) => `${i + 1}. ${a}`).join("\n");
   const fullCopyText = [
     `#${index + 1} ${topic.title}`,
-    `来源: ${topic.source} | 热度: ${topic.heatScore}`,
+    `来源: ${topic.source} | 热度: ${topic.heatScore} (${heatLabel})`,
     topic.url ? `链接: ${topic.url}` : "",
     "",
     "创作切入角度:",
@@ -166,15 +187,44 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
               <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ color: style.color, backgroundColor: style.bg }}>
                 {style.icon} {topic.source}
               </span>
-              <span className="inline-flex items-center gap-1 text-xs" title={`热度指数: ${topic.heatScore}`}>
-                <RadarPulseDot color={isDark ? "#00D4FF" : "#00B4D8"} className="h-1.5 w-1.5" />
-                {heatEmojis}
+              {/* P1-3: Heat with tooltip */}
+              <span
+                className="relative inline-flex items-center gap-1 text-xs"
+                onMouseEnter={() => setShowHeatTooltip(true)}
+                onMouseLeave={() => setShowHeatTooltip(false)}
+              >
+                <RadarPulseDot color={heatColor} className="h-1.5 w-1.5" />
+                <span style={{ color: heatColor }}>{heatEmojis}</span>
+                <span className={`text-[11px] ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>{topic.heatScore}</span>
+                {showHeatTooltip && (
+                  <span className={`absolute bottom-full left-0 z-20 mb-2 w-48 rounded-lg border p-2.5 text-[11px] leading-relaxed shadow-xl ${
+                    isDark ? "border-[rgba(0,212,255,0.15)] bg-[#1A1F2E] text-[#8B92A8]" : "border-gray-200 bg-white text-gray-500"
+                  }`}>
+                    <span className={`block font-medium ${isDark ? "text-white" : "text-gray-900"}`}>热度指数: {topic.heatScore} ({heatLabel})</span>
+                    <span className="mt-1 block">综合互动量、搜索指数、传播速度、时效加权计算</span>
+                    <span className="mt-1 block">{'< 40 一般 · 40-70 较高 · > 70 爆款'}</span>
+                  </span>
+                )}
               </span>
               <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>{formattedTime}</span>
+              {/* P1-7: Promotional tag */}
+              {topic.isPromotional && (
+                <span className="inline-flex items-center rounded-md bg-[#FF6B35]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#FF6B35]">
+                  疑似推广
+                </span>
+              )}
+              {/* P2-10: Matched queries tag */}
+              {topic.matchedQueries && topic.matchedQueries.length > 1 && (
+                <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] ${
+                  isDark ? "bg-[#00D4FF]/8 text-[#00D4FF]/60" : "bg-blue-50 text-blue-400"
+                }`}>
+                  同时命中 {topic.matchedQueries.length} 个查询
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Action buttons */}
+          {/* P1-4: Favorite button always visible on mobile */}
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
@@ -183,8 +233,8 @@ export function ResultCard({ topic, index, isFavorited, onToggleFavorite, onGene
                 isFavorited
                   ? "text-[#00D4FF]"
                   : isDark
-                    ? "text-[#8B92A8]/40 opacity-0 hover:text-[#00D4FF] group-hover:opacity-100"
-                    : "text-gray-300 opacity-0 hover:text-[#00B4D8] group-hover:opacity-100"
+                    ? "text-[#8B92A8]/40 hover:text-[#00D4FF] sm:opacity-0 sm:group-hover:opacity-100"
+                    : "text-gray-300 hover:text-[#00B4D8] sm:opacity-0 sm:group-hover:opacity-100"
               }`}
               title={isFavorited ? "取消收藏" : "收藏"}
             >

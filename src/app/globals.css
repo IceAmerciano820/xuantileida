@@ -201,16 +201,42 @@ select option {
   }
 }
 
-/* Print styles for PDF export */
+/* Hide scrollbar for horizontal scroll areas */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Print styles for PDF export (P2-9) */
 @media print {
   body {
     background: white !important;
     color: black !important;
+    font-size: 12pt;
   }
   .no-print {
     display: none !important;
   }
   .print-only {
     display: block !important;
+  }
+  /* Ensure cards print with borders */
+  [class*="rounded-2xl"] {
+    border: 1px solid #ccc !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 12px !important;
+  }
+  /* Print header */
+  .print-header {
+    display: block !important;
+    margin-bottom: 16px;
+    font-size: 18pt;
+    font-weight: bold;
   }
 }

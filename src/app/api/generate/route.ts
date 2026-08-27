@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { LLMClient, Config, HeaderUtils } from "coze-coding-dev-sdk";
 
 interface GenerateRequest {
-  title: string;
-  snippet: string;
-  contentType: "xiaohongshu" | "douyin" | "gongzhonghao";
+  prompt?: string;
+  title?: string;
+  snippet?: string;
+  contentType?: string;
 }
 
 const CONTENT_PROMPTS: Record<string, string> = {
@@ -34,18 +35,25 @@ const CONTENT_PROMPTS: Record<string, string> = {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as GenerateRequest;
-    const { title, snippet, contentType } = body;
-
-    if (!title || !contentType || !CONTENT_PROMPTS[contentType]) {
-      return NextResponse.json({ error: "参数无效" }, { status: 400 });
-    }
 
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const config = new Config();
     const client = new LLMClient(config, customHeaders);
 
-    const systemPrompt = CONTENT_PROMPTS[contentType];
-    const userMessage = `热点话题：${title}\n\n相关信息：${snippet || "无额外信息"}\n\n请根据以上话题生成内容。`;
+    let systemPrompt: string;
+    let userMessage: string;
+
+    // P2-4/P2-5: Support direct prompt mode (title candidates, tags, custom options)
+    if (body.prompt) {
+      systemPrompt = "你是一位专业的内容创作助手，擅长根据热点话题生成高质量的创作内容。请直接输出内容，不要添加额外说明或前言。";
+      userMessage = body.prompt;
+    } else if (body.title && body.contentType && CONTENT_PROMPTS[body.contentType]) {
+      // Legacy mode for backward compatibility
+      systemPrompt = CONTENT_PROMPTS[body.contentType];
+      userMessage = `热点话题：${body.title}\n\n相关信息：${body.snippet || "无额外信息"}\n\n请根据以上话题生成内容。`;
+    } else {
+      return NextResponse.json({ error: "参数无效：需要 prompt 或 title+contentType" }, { status: 400 });
+    }
 
     const messages = [
       { role: "system" as const, content: systemPrompt },
@@ -63,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "生成内容为空" }, { status: 500 });
     }
 
-    return NextResponse.json({ content, contentType, title });
+    return NextResponse.json({ content });
   } catch (error) {
     console.error("[Generate API] Error:", error);
     return NextResponse.json(

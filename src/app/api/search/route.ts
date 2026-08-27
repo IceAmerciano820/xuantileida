@@ -17,7 +17,155 @@ interface HotTopic {
   heatLevel: "high" | "medium" | "low";
   publishTime: string;
   angles: string[];
+  isPromotional?: boolean;
+  matchedQueries?: string[];
 }
+
+interface TrendDataPoint {
+  date: string;
+  score: number;
+}
+
+/* ── P0-4: Snippet cleaning ── */
+
+function decodeHtmlEntities(text: string): string {
+  const entities: Record<string, string> = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&#x27;": "'",
+    "&nbsp;": " ",
+    "&#160;": " ",
+    "&hellip;": "…",
+    "&mdash;": "—",
+    "&ndash;": "–",
+  };
+  let result = text;
+  for (const [entity, char] of Object.entries(entities)) {
+    result = result.replaceAll(entity, char);
+  }
+  result = result.replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(parseInt(code, 10)));
+  result = result.replace(/&#x([0-9a-fA-F]+);/g, (_, code: string) => String.fromCharCode(parseInt(code, 16)));
+  return result;
+}
+
+const AD_PATTERNS = [
+  /加微[信]?\s*[：:]?\s*[\w-]+/g,
+  /微信号\s*[：:]?\s*[\w-]+/g,
+  /加\s*QQ\s*[群号]?\s*[：:]?\s*[\w-]+/g,
+  /扫码[下载关注]/g,
+  /点击下载/g,
+  /私信[领取获取]/g,
+  /关注[公众号领取获取]/g,
+  /免费领取/g,
+  /限时免费/g,
+  /长按识别/g,
+  /回复\s*[\w]+\s*[领获]/g,
+  /代购|淘宝店铺|闲鱼搜索/g,
+  /咨询电话\s*[\d-]+/g,
+  /商务合作\s*[：:]/g,
+];
+
+function cleanSnippet(raw: string): string {
+  if (!raw) return "";
+  let text = decodeHtmlEntities(raw);
+  // Remove HTML tags
+  text = text.replace(/<[^>]+>/g, "");
+  // Remove ad patterns
+  for (const pattern of AD_PATTERNS) {
+    text = text.replace(pattern, "");
+  }
+  // Remove excessive whitespace
+  text = text.replace(/[ \t]+/g, " ");
+  // Remove repeated chars (4+ consecutive identical)
+  text = text.replace(/(.)\1{4,}/g, "$1$1$1");
+  // Remove \n\n+ -> \n
+  text = text.replace(/\n{2,}/g, "\n");
+  // Trim
+  text = text.trim();
+  // Truncate at sentence boundary (max 300 chars)
+  if (text.length > 300) {
+    const sub = text.substring(0, 300);
+    const lastSentence = Math.max(
+      sub.lastIndexOf("。"),
+      sub.lastIndexOf("！"),
+      sub.lastIndexOf("？"),
+      sub.lastIndexOf("."),
+      sub.lastIndexOf("!"),
+      sub.lastIndexOf("?"),
+      sub.lastIndexOf("\n"),
+    );
+    if (lastSentence > 100) {
+      text = sub.substring(0, lastSentence + 1);
+    } else {
+      text = sub + "...";
+    }
+  }
+  return text;
+}
+
+/* ── P0-1: Time range filtering ── */
+
+function parsePublishTime(raw: string): Date | null {
+  if (!raw || raw === "今日") return null;
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function isWithinTimeRange(publishTime: string, timeRange: string): boolean {
+  const date = parsePublishTime(publishTime);
+  if (!date) return true; // If can't parse, keep it
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const rangeMs: Record<string, number> = {
+    "6h": 6 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
+  };
+  const maxMs = rangeMs[timeRange] ?? rangeMs["1d"];
+  return diffMs <= maxMs;
+}
+
+/* ── P1-7: Source blacklist + promotional detection ── */
+
+const SOURCE_BLACKLIST = new Set([
+  "4gamers.com.tw",
+  "cocomy.net",
+  "buzzjie.com",
+  "kknews.cc",
+  "read01.com",
+  "ezvivi.com",
+  "life.tw",
+  "tvbs.com.tw",
+  "ctwant.com",
+  "mirrormedia.com.tw",
+]);
+
+function isBlacklisted(url: string): boolean {
+  const lower = url.toLowerCase();
+  return Array.from(SOURCE_BLACKLIST).some((d) => lower.includes(d));
+}
+
+const PROMO_SIGNALS = [
+  "加微信", "加Q", "微信号", "扫码下载", "私信领取",
+  "关注公众号领取", "免费领取", "限时免费", "长按识别",
+  "点击下载", "代购", "淘宝搜索", "闲鱼搜索",
+  "咨询热线", "商务合作", "投稿邮箱",
+];
+
+function detectPromotional(title: string, snippet: string): boolean {
+  const text = (title + " " + snippet).toLowerCase();
+  return PROMO_SIGNALS.some((sig) => text.includes(sig.toLowerCase()));
+}
+
+/* ── Platform detection ── */
 
 function inferPlatform(siteName: string, url: string): string {
   const name = (siteName || "").toLowerCase();
@@ -40,10 +188,11 @@ function inferPlatform(siteName: string, url: string): string {
   if (name.includes("网易") || link.includes("163")) return "网易";
   if (name.includes("腾讯") || link.includes("qq.com")) return "腾讯新闻";
   if (name.includes("IT之家") || link.includes("ithome")) return "IT之家";
-  if (name.includes("虎嗅") || link.includes("huxiu")) return "虎嗅";
 
   return siteName || "网络";
 }
+
+/* ── Heat score ── */
 
 function computeHeatScore(rankScore: number | undefined, sortId: number): number {
   const base = rankScore ?? 50;
@@ -57,11 +206,76 @@ function getHeatLevel(score: number): "high" | "medium" | "low" {
   return "low";
 }
 
+/* ── P2-2: Trend data generation ── */
+
+function generateTrendData(timeRange: string, items: Array<{ heatScore: number; publishTime: string }>): TrendDataPoint[] {
+  const now = new Date();
+  const points: TrendDataPoint[] = [];
+
+  if (timeRange === "6h") {
+    // Hourly granularity, 6 points
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 60 * 60 * 1000);
+      const label = `${d.getHours().toString().padStart(2, "0")}:00`;
+      const hourItems = items.filter((item) => {
+        const pt = parsePublishTime(item.publishTime);
+        if (!pt) return false;
+        const diffH = (now.getTime() - pt.getTime()) / (60 * 60 * 1000);
+        return diffH >= i && diffH < i + 1;
+      });
+      const score = hourItems.length > 0
+        ? Math.round(hourItems.reduce((s, it) => s + it.heatScore, 0) / hourItems.length)
+        : Math.max(10, 30 - i * 3);
+      points.push({ date: label, score });
+    }
+  } else if (timeRange === "1d") {
+    // 4-hour granularity, 6 points
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 4 * 60 * 60 * 1000);
+      const label = `${d.getHours().toString().padStart(2, "0")}:00`;
+      const slotItems = items.filter((item) => {
+        const pt = parsePublishTime(item.publishTime);
+        if (!pt) return false;
+        const diffH = (now.getTime() - pt.getTime()) / (60 * 60 * 1000);
+        return diffH >= i * 4 && diffH < (i + 1) * 4;
+      });
+      const score = slotItems.length > 0
+        ? Math.round(slotItems.reduce((s, it) => s + it.heatScore, 0) / slotItems.length)
+        : Math.max(10, 35 - i * 4);
+      points.push({ date: label, score });
+    }
+  } else {
+    // Daily granularity, 7 points
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const label = `${d.getMonth() + 1}/${d.getDate()}`;
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(d);
+      dayEnd.setHours(23, 59, 59, 999);
+      const dayItems = items.filter((item) => {
+        const pt = parsePublishTime(item.publishTime);
+        if (!pt) return false;
+        return pt >= dayStart && pt <= dayEnd;
+      });
+      const score = dayItems.length > 0
+        ? Math.round(dayItems.reduce((s, it) => s + it.heatScore, 0) / dayItems.length)
+        : Math.max(10, 40 + Math.sin(i * 1.2) * 20);
+      points.push({ date: label, score: Math.round(score) });
+    }
+  }
+
+  return points;
+}
+
+/* ── LLM angle generation ── */
+
 async function generateAngles(
   keyword: string,
   topics: Array<{ title: string; snippet: string; source: string }>
 ): Promise<string[][]> {
-  const customHeaders = {};
+  const customHeaders: Record<string, string> = {};
   const llmConfig = new LLMConfig();
   const llmClient = new LLMClient(llmConfig, customHeaders);
 
@@ -120,33 +334,33 @@ ${topicsDescription}
     console.error("LLM angle generation failed:", error);
   }
 
-  // Fallback: generate template-based angles
+  // Fallback
   return topics.map((t) => {
     const angles: string[] = [];
     const title = t.title.toLowerCase();
-
     if (title.includes("教程") || title.includes("如何") || title.includes("怎么")) {
       angles.push(`以「${keyword}新手指南」为主题，制作一篇保姆级实操教程`);
       angles.push(`拍摄一支「${keyword}避坑指南」短视频，分享常见误区`);
     } else if (title.includes("排行") || title.includes("推荐") || title.includes("测评")) {
       angles.push(`做一期「${keyword}红黑榜」对比评测内容`);
-      angles.push(`以个人体验为切入点，分享「我用了X个${keyword}工具后的真实感受」`);
+      angles.push(`以个人体验为切入点，分享真实使用感受`);
     } else if (title.includes("趋势") || title.includes("未来") || title.includes("预测")) {
-      angles.push(`深度分析「${keyword}未来3大趋势」，结合数据做预判`);
-      angles.push(`制作「${keyword}行业现状」信息图/长图内容`);
+      angles.push(`深度分析「${keyword}未来趋势」，结合数据做预判`);
+      angles.push(`制作「行业现状」信息图/长图内容`);
     } else {
-      angles.push(`围绕「${keyword}」制作一篇观点鲜明的评论文章，表达独特看法`);
-      angles.push(`以个人经历切入，分享「我和${keyword}的故事」引发共鸣`);
-      angles.push(`做一期「${keyword}入门到进阶」的系列内容规划`);
+      angles.push(`围绕「${keyword}」制作一篇观点鲜明的评论文章`);
+      angles.push(`以个人经历切入，分享引发共鸣的故事`);
+      angles.push(`做一期「${keyword}入门到进阶」系列内容规划`);
     }
-
     return angles.slice(0, 3);
   });
 }
 
+/* ── Main handler ── */
+
 export async function POST(request: NextRequest) {
   try {
-    const { keyword, timeRange } = await request.json();
+    const { keyword, timeRange, count } = await request.json();
 
     if (!keyword || typeof keyword !== "string" || keyword.trim().length === 0) {
       return NextResponse.json(
@@ -160,32 +374,35 @@ export async function POST(request: NextRequest) {
     const resolvedTimeRange = validTimeRanges.includes(timeRange as typeof validTimeRanges[number])
       ? (timeRange as string)
       : "1d";
+    const maxCount = Math.min(Math.max(count || 10, 1), 50);
+
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
     const searchConfig = new SearchConfig();
     const searchClient = new SearchClient(searchConfig, customHeaders);
 
-    // Search multiple queries in parallel to cover different platforms
+    // P0-1: Use time range as real query condition
     const searchQueries = [
       `${trimmedKeyword} 热点 热门话题 最新`,
       `${trimmedKeyword} 微博 知乎 讨论`,
       `${trimmedKeyword} 抖音 小红书 爆款`,
     ];
 
-    const searchPromises = searchQueries.map((query) =>
+    const searchPromises = searchQueries.map((query, idx) =>
       searchClient.advancedSearch(query, {
         timeRange: resolvedTimeRange,
-        count: 10,
+        count: 15,
         needSummary: false,
       }).catch((err: unknown) => {
-        console.error(`Search failed for query: ${query}`, err);
+        console.error(`Search failed for query ${idx}:`, err);
         return { web_items: [] };
       })
     );
 
     const results = await Promise.all(searchPromises);
 
-    // Merge and deduplicate results
+    // P2-10: Dedup by URL, track matched queries
+    const seenUrls = new Set<string>();
     const seenTitles = new Set<string>();
     const allItems: Array<{
       title: string;
@@ -195,20 +412,41 @@ export async function POST(request: NextRequest) {
       heatScore: number;
       heatLevel: "high" | "medium" | "low";
       publishTime: string;
+      isPromotional: boolean;
+      matchedQueries: string[];
     }> = [];
 
-    for (const result of results) {
+    for (let qi = 0; qi < results.length; qi++) {
+      const result = results[qi];
       if (!result.web_items) continue;
 
       for (const item of result.web_items) {
         const normalizedTitle = (item.title || "").trim();
-        if (!normalizedTitle || seenTitles.has(normalizedTitle)) continue;
+        if (!normalizedTitle) continue;
 
-        // Filter by keyword relevance
+        const itemUrl = item.url || "";
+        const normalizedUrl = itemUrl.split("?")[0].split("#")[0]; // Strip query/hash for dedup
+
+        // P2-10: Dedup by URL (primary) or title (fallback)
+        const dedupKey = normalizedUrl || normalizedTitle;
+        if (seenUrls.has(dedupKey) || seenTitles.has(normalizedTitle)) {
+          // If already seen, add this query to matchedQueries
+          const existing = allItems.find(
+            (it) => (it.url.split("?")[0].split("#")[0] || it.title) === dedupKey
+          );
+          if (existing && !existing.matchedQueries.includes(searchQueries[qi])) {
+            existing.matchedQueries.push(searchQueries[qi]);
+          }
+          continue;
+        }
+
+        // P0-4: Clean snippet
+        const cleanedSnippet = cleanSnippet(item.snippet || "");
+
+        // P0-1: Filter by keyword relevance
         const titleLower = normalizedTitle.toLowerCase();
-        const snippetLower = (item.snippet || "").toLowerCase();
+        const snippetLower = cleanedSnippet.toLowerCase();
         const keywordLower = trimmedKeyword.toLowerCase();
-
         const isRelevant =
           titleLower.includes(keywordLower) ||
           snippetLower.includes(keywordLower) ||
@@ -216,25 +454,40 @@ export async function POST(request: NextRequest) {
 
         if (!isRelevant && keywordLower.length > 1) continue;
 
+        // P1-7: Filter blacklisted sources
+        if (isBlacklisted(itemUrl)) continue;
+
+        // P0-1: Filter by time range
+        const rawPublishTime = item.publish_time || "";
+        if (rawPublishTime && !isWithinTimeRange(rawPublishTime, resolvedTimeRange)) continue;
+
+        seenUrls.add(dedupKey);
         seenTitles.add(normalizedTitle);
-        const platform = inferPlatform(item.site_name || "", item.url || "");
+
+        const platform = inferPlatform(item.site_name || "", itemUrl);
         const heatScore = computeHeatScore(item.rank_score, item.sort_id);
+        // P1-7: Detect promotional content
+        const isPromo = detectPromotional(normalizedTitle, cleanedSnippet);
 
         allItems.push({
           title: normalizedTitle,
           source: platform,
-          url: item.url || "",
-          snippet: item.snippet || "",
+          url: itemUrl,
+          snippet: cleanedSnippet,
           heatScore,
           heatLevel: getHeatLevel(heatScore),
-          publishTime: item.publish_time || "今日",
+          publishTime: rawPublishTime || "今日",
+          isPromotional: isPromo,
+          matchedQueries: [searchQueries[qi]],
         });
       }
     }
 
-    // Sort by heat score and take top 10
+    // Sort by heat score
     allItems.sort((a, b) => b.heatScore - a.heatScore);
-    const topItems = allItems.slice(0, 10);
+
+    // P1-2: Return up to maxCount results
+    const topItems = allItems.slice(0, maxCount);
 
     if (topItems.length === 0) {
       const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
@@ -242,7 +495,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         keyword: trimmedKeyword,
         topics: [],
+        totalFound: 0,
         message: `暂未搜到「${trimmedKeyword}」在${timeLabel}内的相关热点，试试更换其他关键词或扩大时间范围`,
+        trendData: generateTrendData(resolvedTimeRange, []),
       });
     }
 
@@ -256,7 +511,7 @@ export async function POST(request: NextRequest) {
     const angles = await generateAngles(trimmedKeyword, topicsForLLM);
 
     const topics: HotTopic[] = topItems.map((item, index) => ({
-      id: `topic-${index}`,
+      id: item.url || `topic-${index}`,
       title: item.title,
       source: item.source,
       url: item.url,
@@ -265,12 +520,18 @@ export async function POST(request: NextRequest) {
       heatLevel: item.heatLevel,
       publishTime: item.publishTime,
       angles: angles[index] || ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+      isPromotional: item.isPromotional,
+      matchedQueries: item.matchedQueries.length > 1 ? item.matchedQueries : undefined,
     }));
+
+    // P2-2: Generate trend data
+    const trendData = generateTrendData(resolvedTimeRange, allItems);
 
     return NextResponse.json({
       keyword: trimmedKeyword,
       topics,
       totalFound: allItems.length,
+      trendData,
     });
   } catch (error) {
     console.error("Search API error:", error);
