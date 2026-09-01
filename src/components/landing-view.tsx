@@ -45,7 +45,7 @@ export function LandingView({ onSearch }: LandingViewProps) {
           fetch("/api/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ keyword: kw, timeRange: "1d", count: 50, stream: false }),
+            body: JSON.stringify({ keyword: kw, timeRange: "1d", count: 30, stream: false }),
           })
             .then((res) => res.json())
             .then((data) => {

@@ -254,6 +254,38 @@ select option {
   }
 }
 
+/* Radar landing page animations */
+@keyframes radar-sweep-landing {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radar-dot-pulse {
+  0%, 100% {
+    opacity: 0.2;
+    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0)) scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(var(--tw-translate-x, 0), var(--tw-translate-y, 0)) scale(1.2);
+  }
+}
+
+@keyframes radar-center-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+}
+
 /* Theme transition - sun/moon rise animation */
 .theme-transition-overlay {
   position: fixed;

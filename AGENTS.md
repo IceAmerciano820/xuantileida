@@ -78,6 +78,7 @@
 - **组件**：
   - `src/components/radar-icon.tsx` - 雷达图标组件（Logo图标、扫描动画、脉冲点、背景装饰）
   - `src/components/landing-view.tsx` - 首屏默认视图（今日热点速览 + 赛道探索卡片，自动加载热点预览）
+  - `src/components/radar-landing-page.tsx` - 雷达着陆页（全屏雷达扫描动画，首次访问展示，sessionStorage控制）
   - `src/components/search-input.tsx` - 搜索输入框组件
   - `src/components/result-card.tsx` - 热点结果卡片组件
   - `src/components/loading-skeleton.tsx` - 加载骨架屏（含SSE进度条）

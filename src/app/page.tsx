@@ -12,6 +12,7 @@ import { GenerateContentModal } from "@/components/generate-content-modal";
 import { FavoritesModal } from "@/components/favorites-modal";
 import { RadarIcon, RadarBackground } from "@/components/radar-icon";
 import { LandingView } from "@/components/landing-view";
+import { RadarLandingPage } from "@/components/radar-landing-page";
 
 export type FavoriteStatus = "draft" | "scheduled" | "published";
 export type TrendTag = "暴涨" | "平稳" | "降温" | "潜力黑马";
@@ -74,7 +75,7 @@ const CUSTOM_TRACKS_KEY = "hotspot_custom_tracks";
 const IGNORED_TOPICS_KEY = "hotspot_ignored_topics";
 const DONE_TOPICS_KEY = "hotspot_done_topics";
 const MAX_HISTORY = 10;
-const REQUEST_COUNT = 50;
+const REQUEST_COUNT = 30;
 const CACHE_TTL = 5 * 60 * 1000;
 const APP_VERSION = "v2.2.0";
 const FIRST_SCREEN_TIMEOUT_MS = 30000;
@@ -142,6 +143,23 @@ function InnerApp() {
   const abortRef = useRef<AbortController | null>(null);
   // v2.2: SSE progress state
   const [sseProgress, setSseProgress] = useState<{ completed: number; total: number } | null>(null);
+  // v2.2: Landing page state
+  const [showLanding, setShowLanding] = useState(false);
+
+  // Check sessionStorage for landing page on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const seen = sessionStorage.getItem("landing_seen");
+      if (!seen) {
+        setShowLanding(true);
+      }
+    }
+  }, []);
+
+  const handleLandingEnter = useCallback(() => {
+    sessionStorage.setItem("landing_seen", "1");
+    setShowLanding(false);
+  }, []);
 
   // Load from localStorage with P0-2 migration (dedup by URL)
   useEffect(() => {
@@ -775,8 +793,10 @@ function InnerApp() {
   const hasNoResults = results && results.topics.length === 0;
 
   return (
-    <div className={`relative flex min-h-screen flex-col transition-colors duration-300 ${isDark ? "bg-[#0A0E1A]" : "bg-[#FAFAFA]"}`}>
-      <RadarBackground isDark={isDark} />
+    <>
+      {showLanding && <RadarLandingPage onEnter={handleLandingEnter} />}
+      <div className={`relative flex min-h-screen flex-col transition-colors duration-300 ${isDark ? "bg-[#0A0E1A]" : "bg-[#FAFAFA]"}`}>
+        <RadarBackground isDark={isDark} />
 
       {/* Header */}
       <header className={`sticky top-0 z-40 no-print ${
@@ -1287,6 +1307,7 @@ function InnerApp() {
         onImport={handleImportFavorites}
       />
     </div>
+    </>
   );
 }
 

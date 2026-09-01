@@ -412,7 +412,7 @@ export async function POST(request: NextRequest) {
     const validTimeRanges = ["6h", "1d", "7d"] as const;
     const resolvedTimeRange = validTimeRanges.includes(timeRange as typeof validTimeRanges[number])
       ? (timeRange as string) : "1d";
-    const maxCount = Math.min(Math.max(count || 50, 1), 50);
+    const maxCount = Math.min(Math.max(count || 30, 1), 30);
 
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const searchConfig = new SearchConfig();
