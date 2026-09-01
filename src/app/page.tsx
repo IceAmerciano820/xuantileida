@@ -75,8 +75,10 @@ const DONE_TOPICS_KEY = "hotspot_done_topics";
 const MAX_HISTORY = 10;
 const REQUEST_COUNT = 50;
 const CACHE_TTL = 5 * 60 * 1000;
-const APP_VERSION = "v2.1.0";
-const SCAN_TIMEOUT_MS = 25000;
+const APP_VERSION = "v2.2.0";
+const FIRST_SCREEN_TIMEOUT_MS = 30000;
+const FULL_TIMEOUT_MS = 60000;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -135,6 +137,10 @@ function InnerApp() {
   const cacheRef = useRef<{ key: string; data: SearchResponse; timestamp: number } | null>(null);
   const hasInitialized = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // v2.2: SSE progress state
+  const [sseProgress, setSseProgress] = useState<{ completed: number; total: number } | null>(null);
 
   // Load from localStorage with P0-2 migration (dedup by URL)
   useEffect(() => {
@@ -205,8 +211,16 @@ function InnerApp() {
       setPlatformFilter("全部");
       setShowHotOnly(false);
       setResultTab("all");
+      setSseProgress(null);
       return;
     }
+
+    // Abort previous request if any
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortRef.current = abortController;
 
     setLoading(true);
     setResults(null);
@@ -216,47 +230,156 @@ function InnerApp() {
     setShowHotOnly(false);
     setShowMobileMenu(false);
     setResultTab("all");
+    setSseProgress(null);
 
     // Loading phases
-    setLoadingPhase("正在聚合全网热点...");
-    const phaseTimer1 = setTimeout(() => setLoadingPhase("AI 解析选题角度..."), 4000);
-    const phaseTimer2 = setTimeout(() => setLoadingPhase("生成评分与长尾词..."), 9000);
+    setLoadingPhase("正在扫描全网热点...");
 
-    // Timeout handling (25s)
+    // Timeout handling: 30s for first screen, 60s total
+    let firstScreenReceived = false;
     let timedOut = false;
     timeoutRef.current = setTimeout(() => {
-      timedOut = true;
-      setLoading(false);
-      setLoadingPhase("");
-      setNetworkError("扫描超时，请缩小时间范围或更换关键词重试");
-      clearTimeout(phaseTimer1);
-      clearTimeout(phaseTimer2);
-    }, SCAN_TIMEOUT_MS);
+      if (!firstScreenReceived) {
+        timedOut = true;
+        abortController.abort();
+        setLoading(false);
+        setLoadingPhase("");
+        setSseProgress(null);
+        setNetworkError("扫描超时，请缩小时间范围或更换关键词重试");
+      }
+    }, FIRST_SCREEN_TIMEOUT_MS);
+
+    const fullTimeout = setTimeout(() => {
+      if (!timedOut) {
+        timedOut = true;
+        abortController.abort();
+        setLoading(false);
+        setLoadingPhase("");
+        setSseProgress(null);
+        setNetworkError("全量分析超时，已展示已完成的分析结果");
+      }
+    }, FULL_TIMEOUT_MS);
 
     try {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: trimmed, timeRange: range, count }),
+        body: JSON.stringify({ keyword: trimmed, timeRange: range, count, stream: true }),
+        signal: abortController.signal,
       });
+
       if (timedOut) return;
-      clearTimeout(phaseTimer1);
-      clearTimeout(phaseTimer2);
       if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+
       if (!response.ok) {
+        clearTimeout(fullTimeout);
         const errData = await response.json().catch(() => null);
         throw new Error(errData?.error || `请求失败 (${response.status})`);
       }
-      const data: SearchResponse = await response.json();
-      setResults(data);
-      cacheRef.current = { key: cacheKey, data, timestamp: Date.now() };
-      if (data.topics.length > 0) addToHistory(trimmed);
-      updateUrl(trimmed, range);
+
+      // SSE streaming consumption
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("无法读取响应流");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulatedTopics: TopicAngle[] = [];
+      let trendData: TrendDataPoint[] = [];
+      let totalFound = 0;
+      let message = "";
+
+      setLoadingPhase("AI 解析选题角度...");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done || timedOut) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === "meta") {
+              totalFound = data.total;
+              trendData = data.trendData || [];
+              message = data.message || "";
+              if (data.total === 0) {
+                // No results
+                setResults({ keyword: trimmed, topics: [], totalFound: 0, message, trendData });
+                setLoading(false);
+                setLoadingPhase("");
+                clearTimeout(fullTimeout);
+                return;
+              }
+            } else if (data.type === "batch") {
+              if (!firstScreenReceived) {
+                firstScreenReceived = true;
+                // Switch to full timeout for remaining
+                if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+              }
+              const batchTopics = data.topics as TopicAngle[];
+              accumulatedTopics = [...accumulatedTopics, ...batchTopics];
+              setSseProgress({ completed: data.completed || accumulatedTopics.length, total: data.total || totalFound });
+              setLoadingPhase(`AI 分析选题角度（已完成 ${data.completed || accumulatedTopics.length}/${data.total || totalFound}）`);
+
+              // Progressive render: update results with what we have so far
+              const partialResults: SearchResponse = {
+                keyword: trimmed,
+                topics: accumulatedTopics,
+                totalFound,
+                trendData,
+                message,
+              };
+              setResults(partialResults);
+            } else if (data.type === "done") {
+              // Final results
+              const finalResults: SearchResponse = {
+                keyword: trimmed,
+                topics: accumulatedTopics,
+                totalFound,
+                trendData,
+                message,
+              };
+              setResults(finalResults);
+              cacheRef.current = { key: cacheKey, data: finalResults, timestamp: Date.now() };
+              if (accumulatedTopics.length > 0) addToHistory(trimmed);
+              updateUrl(trimmed, range);
+            } else if (data.type === "error") {
+              throw new Error(data.message || "分析过程出错");
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== "分析过程出错") {
+              // JSON parse error, skip this line
+              continue;
+            }
+            throw parseErr;
+          }
+        }
+      }
+
+      // If we got here without a "done" event but have some results, still cache them
+      if (accumulatedTopics.length > 0 && !cacheRef.current) {
+        const partialResults: SearchResponse = {
+          keyword: trimmed,
+          topics: accumulatedTopics,
+          totalFound,
+          trendData,
+          message,
+        };
+        setResults(partialResults);
+        cacheRef.current = { key: cacheKey, data: partialResults, timestamp: Date.now() };
+        if (accumulatedTopics.length > 0) addToHistory(trimmed);
+        updateUrl(trimmed, range);
+      }
     } catch (err: unknown) {
       if (timedOut) return;
+      if (err instanceof Error && err.name === "AbortError") return;
       if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-      clearTimeout(phaseTimer1);
-      clearTimeout(phaseTimer2);
+      clearTimeout(fullTimeout);
       const message = err instanceof Error ? err.message : "";
       if (message.includes("Failed to fetch") || message.includes("NetworkError") || !message) {
         setNetworkError("网络异常，请稍后重试");
@@ -265,8 +388,10 @@ function InnerApp() {
       }
     } finally {
       if (!timedOut) {
+        clearTimeout(fullTimeout);
         setLoading(false);
         setLoadingPhase("");
+        setSseProgress(null);
       }
     }
   }, [addToHistory, updateUrl]);
@@ -294,7 +419,11 @@ function InnerApp() {
   }, [doSearch]);
 
   const handleSearch = useCallback((kw: string) => {
-    doSearch(kw, timeRange, REQUEST_COUNT);
+    // v2.2: Debounce 300ms
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      doSearch(kw, timeRange, REQUEST_COUNT);
+    }, SEARCH_DEBOUNCE_MS);
   }, [doSearch, timeRange]);
 
   // P0-1: Re-search when time range changes
@@ -812,8 +941,10 @@ function InnerApp() {
           </div>
         </section>
 
-        {/* Loading */}
-        {loading && <LoadingSkeleton phase={loadingPhase} />}
+        {/* Loading - show skeleton only before first results arrive */}
+        {loading && (!results || results.topics.length === 0) && (
+          <LoadingSkeleton phase={loadingPhase} progress={sseProgress ?? undefined} />
+        )}
 
         {/* Error */}
         {networkError && !loading && <EmptyState variant="error" message={networkError} onRetry={handleSubmit} />}
@@ -1068,7 +1199,7 @@ function InnerApp() {
             </div>
 
             {/* P1-2: Load more */}
-            {hasMore && (
+            {hasMore && !loading && (
               <div className="mt-5 flex justify-center">
                 <button
                   type="button"
@@ -1084,6 +1215,20 @@ function InnerApp() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
+              </div>
+            )}
+
+            {/* v2.2: Streaming indicator - shows while SSE is still delivering results */}
+            {loading && results && results.topics.length > 0 && (
+              <div className="mt-5 flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative h-1.5 w-20 overflow-hidden rounded-full bg-[#252B3D]/50">
+                    <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#00D4FF]" style={{ animation: "progress 1.5s ease-in-out infinite" }} />
+                  </div>
+                  <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
+                    {loadingPhase || "正在分析更多选题..."}
+                  </span>
+                </div>
               </div>
             )}
 

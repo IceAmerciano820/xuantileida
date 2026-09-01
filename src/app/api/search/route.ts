@@ -363,12 +363,38 @@ async function analyzeAllTopics(
   const llmConfig = new LLMConfig();
   const llmClient = new LLMClient(llmConfig, customHeaders);
 
-  const allResults: LLMAnalysisResult[] = [];
+  // Build batches
+  const batches: Array<{ batch: Array<{ title: string; snippet: string; source: string; heatScore: number }>; startIndex: number }> = [];
   for (let i = 0; i < topics.length; i += ANALYSIS_BATCH_SIZE) {
-    const batch = topics.slice(i, i + ANALYSIS_BATCH_SIZE);
-    const batchResults = await analyzeTopicsBatch(keyword, batch, llmClient);
-    allResults.push(...batchResults);
+    batches.push({ batch: topics.slice(i, i + ANALYSIS_BATCH_SIZE), startIndex: i });
   }
+
+  // Parallel execution with concurrency limit of 5
+  const CONCURRENCY_LIMIT = 5;
+  const allResults: LLMAnalysisResult[] = new Array(topics.length);
+
+  for (let groupStart = 0; groupStart < batches.length; groupStart += CONCURRENCY_LIMIT) {
+    const group = batches.slice(groupStart, groupStart + CONCURRENCY_LIMIT);
+    const groupResults = await Promise.all(
+      group.map(async ({ batch, startIndex }) => {
+        const results = await analyzeTopicsBatch(keyword, batch, llmClient);
+        return { results, startIndex };
+      })
+    );
+    for (const { results, startIndex } of groupResults) {
+      for (let i = 0; i < results.length; i++) {
+        allResults[startIndex + i] = results[i];
+      }
+    }
+  }
+
+  // Fill any gaps with fallback
+  for (let i = 0; i < allResults.length; i++) {
+    if (!allResults[i]) {
+      allResults[i] = generateFallbackAnalysis(topics[i].title, keyword, topics[i].heatScore);
+    }
+  }
+
   return allResults;
 }
 
@@ -376,7 +402,7 @@ async function analyzeAllTopics(
 
 export async function POST(request: NextRequest) {
   try {
-    const { keyword, timeRange, count } = await request.json();
+    const { keyword, timeRange, count, stream } = await request.json();
 
     if (!keyword || typeof keyword !== "string" || keyword.trim().length === 0) {
       return NextResponse.json({ error: "请输入有效的关键词" }, { status: 400 });
@@ -475,14 +501,34 @@ export async function POST(request: NextRequest) {
 
     if (topItems.length === 0) {
       const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
-      return NextResponse.json({
+      const emptyResult = {
         keyword: trimmedKeyword, topics: [], totalFound: 0,
         message: `暂未搜到「${trimmedKeyword}」在${timeLabels[resolvedTimeRange] || "近24小时"}内的相关热点，试试更换其他关键词或扩大时间范围`,
         trendData: generateTrendData(resolvedTimeRange, []),
-      });
+      };
+      if (stream) {
+        // SSE: send empty result then done
+        const encoder = new TextEncoder();
+        const sseStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "meta", total: 0, trendData: emptyResult.trendData, message: emptyResult.message })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
+            controller.close();
+          },
+        });
+        return new Response(sseStream, {
+          headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
+        });
+      }
+      return NextResponse.json(emptyResult);
     }
 
-    // v2.1: Structured LLM analysis
+    // ── SSE Streaming mode ──
+    if (stream) {
+      return handleSSEStream(trimmedKeyword, resolvedTimeRange, topItems, allItems);
+    }
+
+    // ── JSON mode (parallel processing) ──
     const topicsForLLM = topItems.map((item) => ({
       title: item.title, snippet: item.snippet, source: item.source, heatScore: item.heatScore,
     }));
@@ -520,4 +566,178 @@ export async function POST(request: NextRequest) {
     console.error("Search API error:", error);
     return NextResponse.json({ error: "搜索服务暂时不可用，请稍后重试" }, { status: 500 });
   }
+}
+
+/* ── SSE Streaming handler ── */
+
+function handleSSEStream(
+  keyword: string,
+  resolvedTimeRange: string,
+  topItems: Array<{
+    title: string; source: string; url: string; snippet: string;
+    heatScore: number; heatLevel: "high" | "medium" | "low";
+    publishTime: string; isPromotional: boolean; matchedQueries: string[];
+  }>,
+  allItems: Array<{ heatScore: number; publishTime: string }>
+) {
+  const encoder = new TextEncoder();
+  const trendData = generateTrendData(resolvedTimeRange, allItems);
+  const totalItems = topItems.length;
+  const FIRST_SCREEN_COUNT = 20;
+
+  const sseStream = new ReadableStream({
+    async start(controller) {
+      const send = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        // Step 1: Send meta info immediately
+        send({ type: "meta", total: totalItems, trendData });
+
+        // Step 2: LLM analyze first 20 items (priority)
+        const firstScreenItems = topItems.slice(0, FIRST_SCREEN_COUNT);
+        const firstTopicsForLLM = firstScreenItems.map((item) => ({
+          title: item.title, snippet: item.snippet, source: item.source, heatScore: item.heatScore,
+        }));
+
+        const llmConfig = new LLMConfig();
+        const llmClient = new LLMClient(llmConfig, {});
+
+        // Process first screen batches in parallel
+        const firstBatches: Array<{ batch: Array<{ title: string; snippet: string; source: string; heatScore: number }>; index: number }> = [];
+        for (let i = 0; i < firstTopicsForLLM.length; i += ANALYSIS_BATCH_SIZE) {
+          firstBatches.push({ batch: firstTopicsForLLM.slice(i, i + ANALYSIS_BATCH_SIZE), index: Math.floor(i / ANALYSIS_BATCH_SIZE) });
+        }
+
+        let completedCount = 0;
+        const firstAnalyses: LLMAnalysisResult[] = new Array(firstTopicsForLLM.length);
+
+        // All first-screen batches in parallel
+        const firstResults = await Promise.all(
+          firstBatches.map(async ({ batch, index }) => {
+            const results = await analyzeTopicsBatch(keyword, batch, llmClient);
+            return { results, batchIndex: index };
+          })
+        );
+
+        for (const { results, batchIndex } of firstResults) {
+          const startIndex = batchIndex * ANALYSIS_BATCH_SIZE;
+          for (let i = 0; i < results.length; i++) {
+            firstAnalyses[startIndex + i] = results[i];
+          }
+          completedCount += results.length;
+        }
+
+        // Fill gaps with fallback
+        for (let i = 0; i < firstAnalyses.length; i++) {
+          if (!firstAnalyses[i]) {
+            firstAnalyses[i] = generateFallbackAnalysis(firstScreenItems[i].title, keyword, firstScreenItems[i].heatScore);
+          }
+        }
+
+        // Build first screen topics and send
+        const firstTopics: HotTopic[] = firstScreenItems.map((item, index) => {
+          const analysis = firstAnalyses[index];
+          return {
+            id: item.url || `topic-${index}`,
+            title: item.title,
+            source: item.source,
+            url: item.url,
+            snippet: item.snippet,
+            heatScore: item.heatScore,
+            heatLevel: item.heatLevel,
+            publishTime: item.publishTime,
+            trendTag: analysis.trendTag,
+            score: analysis.score,
+            scoreReason: analysis.scoreReason,
+            angles: analysis.angles.length > 0 ? analysis.angles : ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+            relatedWords: analysis.relatedWords,
+            riskLevel: analysis.riskLevel,
+            isPromotional: item.isPromotional,
+            matchedQueries: item.matchedQueries.length > 1 ? item.matchedQueries : undefined,
+          };
+        });
+
+        send({ type: "batch", topics: firstTopics, offset: 0, completed: completedCount, total: totalItems });
+
+        // Step 3: LLM analyze remaining items
+        const remainingItems = topItems.slice(FIRST_SCREEN_COUNT);
+        if (remainingItems.length > 0) {
+          const remainingTopicsForLLM = remainingItems.map((item) => ({
+            title: item.title, snippet: item.snippet, source: item.source, heatScore: item.heatScore,
+          }));
+
+          const remainingBatches: Array<{ batch: Array<{ title: string; snippet: string; source: string; heatScore: number }>; index: number }> = [];
+          for (let i = 0; i < remainingTopicsForLLM.length; i += ANALYSIS_BATCH_SIZE) {
+            remainingBatches.push({ batch: remainingTopicsForLLM.slice(i, i + ANALYSIS_BATCH_SIZE), index: Math.floor(i / ANALYSIS_BATCH_SIZE) });
+          }
+
+          // All remaining batches in parallel
+          const remainingResults = await Promise.all(
+            remainingBatches.map(async ({ batch, index }) => {
+              const results = await analyzeTopicsBatch(keyword, batch, llmClient);
+              return { results, batchIndex: index };
+            })
+          );
+
+          const remainingAnalyses: LLMAnalysisResult[] = new Array(remainingTopicsForLLM.length);
+          for (const { results, batchIndex } of remainingResults) {
+            const startIndex = batchIndex * ANALYSIS_BATCH_SIZE;
+            for (let i = 0; i < results.length; i++) {
+              remainingAnalyses[startIndex + i] = results[i];
+            }
+            completedCount += results.length;
+          }
+
+          // Fill gaps
+          for (let i = 0; i < remainingAnalyses.length; i++) {
+            if (!remainingAnalyses[i]) {
+              remainingAnalyses[i] = generateFallbackAnalysis(remainingItems[i].title, keyword, remainingItems[i].heatScore);
+            }
+          }
+
+          const remainingTopics: HotTopic[] = remainingItems.map((item, index) => {
+            const analysis = remainingAnalyses[index];
+            return {
+              id: item.url || `topic-${FIRST_SCREEN_COUNT + index}`,
+              title: item.title,
+              source: item.source,
+              url: item.url,
+              snippet: item.snippet,
+              heatScore: item.heatScore,
+              heatLevel: item.heatLevel,
+              publishTime: item.publishTime,
+              trendTag: analysis.trendTag,
+              score: analysis.score,
+              scoreReason: analysis.scoreReason,
+              angles: analysis.angles.length > 0 ? analysis.angles : ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+              relatedWords: analysis.relatedWords,
+              riskLevel: analysis.riskLevel,
+              isPromotional: item.isPromotional,
+              matchedQueries: item.matchedQueries.length > 1 ? item.matchedQueries : undefined,
+            };
+          });
+
+          send({ type: "batch", topics: remainingTopics, offset: FIRST_SCREEN_COUNT, completed: completedCount, total: totalItems });
+        }
+
+        // Done
+        send({ type: "done" });
+      } catch (error) {
+        console.error("SSE stream error:", error);
+        send({ type: "error", message: "分析过程出错" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
 }
