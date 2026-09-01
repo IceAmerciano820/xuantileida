@@ -105,25 +105,25 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`absolute inset-0 ${isDark ? "bg-black/60" : "bg-black/40"} backdrop-blur-sm`} />
-      <div className={`relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl ${
-        isDark ? "border-[rgba(0,212,255,0.15)] bg-[#1A1F2E]" : "border-gray-200 bg-white"
+      <div className={`relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl ${
+        isDark ? "border-[rgba(148,163,184,0.1)] bg-[#0F172A]/95" : "border-[rgba(0,0,0,0.06)] bg-white/98"
       }`}>
         {/* Header */}
-        <div className={`flex items-center justify-between border-b px-5 py-3.5 ${isDark ? "border-[rgba(0,212,255,0.08)]" : "border-gray-100"}`}>
+        <div className={`flex items-center justify-between border-b px-5 py-3.5 ${isDark ? "border-[rgba(148,163,184,0.08)]" : "border-[rgba(0,0,0,0.06)]"}`}>
           <div className="flex items-center gap-2 min-w-0">
-            <svg className={`h-4 w-4 shrink-0 ${isDark ? "text-[#00D4FF]" : "text-[#00B4D8]"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <svg className={`h-4 w-4 shrink-0 ${isDark ? "text-[#00C6ED]" : "text-[#00B4D8]"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
             </svg>
-            <h2 className={`text-sm font-semibold truncate ${isDark ? "text-white" : "text-gray-900"}`}>AI 创作</h2>
-            <span className={`text-xs truncate ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>{title}</span>
+            <h2 className={`text-sm font-semibold truncate ${isDark ? "text-[#F1F5F9]" : "text-[#0F172A]"}`}>AI 创作</h2>
+            <span className={`text-xs truncate ${isDark ? "text-[#475569]" : "text-[#94A3B8]"}`}>{title}</span>
           </div>
-          <button type="button" onClick={onClose} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-400 hover:bg-gray-100"}`}>
+          <button type="button" onClick={onClose} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isDark ? "text-[#64748B] hover:bg-[rgba(148,163,184,0.08)] hover:text-[#F1F5F9]" : "text-[#94A3B8] hover:bg-gray-100"}`}>
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
         {/* Mode tabs: P2-4/P2-5 */}
-        <div className={`flex gap-1 border-b px-5 py-2.5 ${isDark ? "border-[rgba(0,212,255,0.08)]" : "border-gray-100"}`}>
+        <div className={`flex gap-1 border-b px-5 py-2.5 ${isDark ? "border-[rgba(148,163,184,0.08)]" : "border-[rgba(0,0,0,0.06)]"}`}>
           {([
             { value: "content" as const, label: "生成内容" },
             { value: "titles" as const, label: "标题候选" },
@@ -131,8 +131,8 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
           ]).map((tab) => (
             <button key={tab.value} type="button" onClick={() => { setMode(tab.value); setResult(""); setError(null); setPreviousResult(null); }} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
               mode === tab.value
-                ? (isDark ? "bg-[#00D4FF]/15 text-[#00D4FF]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
-                : (isDark ? "text-[#8B92A8] hover:text-white" : "text-gray-500 hover:text-gray-700")
+                ? (isDark ? "bg-[#00C6ED]/15 text-[#00C6ED]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
+                : (isDark ? "text-[#64748B] hover:text-[#F1F5F9]" : "text-[#94A3B8] hover:text-[#0F172A]")
             }`}>{tab.label}</button>
           ))}
         </div>
@@ -145,19 +145,19 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
                 {contentTypes.map((ct) => (
                   <button key={ct.value} type="button" onClick={() => setContentType(ct.value)} className={`flex-1 rounded-xl border px-2 py-2 text-center transition-all ${
                     contentType === ct.value
-                      ? (isDark ? "border-[#00D4FF]/40 bg-[#00D4FF]/8" : "border-[#00B4D8]/40 bg-blue-50")
-                      : (isDark ? "border-[rgba(0,212,255,0.08)] text-[#8B92A8] hover:border-[#00D4FF]/20" : "border-gray-200 text-gray-500 hover:border-[#00B4D8]/20")
+                      ? (isDark ? "border-[#00C6ED]/30 bg-[#00C6ED]/5" : "border-[#00B4D8]/30 bg-blue-50")
+                      : (isDark ? "border-[rgba(148,163,184,0.08)] text-[#64748B] hover:border-[#00C6ED]/20" : "border-[rgba(0,0,0,0.06)] text-[#94A3B8] hover:border-[#00B4D8]/20")
                   }`}>
                     <div className="text-base">{ct.icon}</div>
-                    <div className={`mt-0.5 text-[11px] ${contentType === ct.value ? (isDark ? "text-[#00D4FF]" : "text-[#00B4D8]") : ""}`}>{ct.label}</div>
+                    <div className={`mt-0.5 text-[11px] ${contentType === ct.value ? (isDark ? "text-[#00C6ED]" : "text-[#00B4D8]") : ""}`}>{ct.label}</div>
                   </button>
                 ))}
               </div>
               {/* P2-4: Custom options */}
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className={`mb-1 block text-[11px] ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>语气风格</label>
-                  <select value={tone} onChange={(e) => setTone(e.target.value)} className={`w-full rounded-lg border px-2 py-1.5 text-xs outline-none ${isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A] text-[#8B92A8]" : "border-gray-200 bg-white text-gray-600"}`}>
+                  <label className={`mb-1 block text-[11px] ${isDark ? "text-[#475569]" : "text-[#94A3B8]"}`}>语气风格</label>
+                  <select value={tone} onChange={(e) => setTone(e.target.value)} className={`w-full rounded-lg border px-2 py-1.5 text-xs outline-none ${isDark ? "border-[rgba(148,163,184,0.08)] bg-[rgba(15,23,42,0.6)] text-[#94A3B8]" : "border-[rgba(0,0,0,0.06)] bg-white text-[#64748B]"}`}>
                     <option value="专业">专业</option>
                     <option value="活泼">活泼</option>
                     <option value="幽默">幽默</option>
@@ -166,8 +166,8 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className={`mb-1 block text-[11px] ${isDark ? "text-[#8B92A8]/60" : "text-gray-400"}`}>目标字数</label>
-                  <select value={wordCount} onChange={(e) => setWordCount(e.target.value)} className={`w-full rounded-lg border px-2 py-1.5 text-xs outline-none ${isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A] text-[#8B92A8]" : "border-gray-200 bg-white text-gray-600"}`}>
+                  <label className={`mb-1 block text-[11px] ${isDark ? "text-[#475569]" : "text-[#94A3B8]"}`}>目标字数</label>
+                  <select value={wordCount} onChange={(e) => setWordCount(e.target.value)} className={`w-full rounded-lg border px-2 py-1.5 text-xs outline-none ${isDark ? "border-[rgba(148,163,184,0.08)] bg-[rgba(15,23,42,0.6)] text-[#94A3B8]" : "border-[rgba(0,0,0,0.06)] bg-white text-[#64748B]"}`}>
                     <option value="300">300字</option>
                     <option value="500">500字</option>
                     <option value="800">800字</option>
@@ -178,10 +178,10 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
             </>
           )}
           {mode === "titles" && (
-            <p className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>生成5个不同风格的标题候选，含悬念型、数字型、痛点型</p>
+            <p className={`text-xs ${isDark ? "text-[#64748B]" : "text-[#94A3B8]"}`}>生成5个不同风格的标题候选，含悬念型、数字型、痛点型</p>
           )}
           {mode === "tags" && (
-            <p className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>生成10-15个相关标签，涵盖话题核心、受众、类型</p>
+            <p className={`text-xs ${isDark ? "text-[#64748B]" : "text-[#94A3B8]"}`}>生成10-15个相关标签，涵盖话题核心、受众、类型</p>
           )}
         </div>
 
@@ -189,7 +189,7 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
         <div className="px-5 pb-2">
           <button type="button" onClick={handleGenerate} disabled={loading} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
             isDark
-              ? "bg-[#00D4FF] text-[#0A0E1A] hover:shadow-[0_0_16px_rgba(0,212,255,0.3)]"
+              ? "bg-[#00C6ED] text-[#0B0F1A] hover:shadow-[0_0_16px_rgba(0,198,237,0.3)]"
               : "bg-[#00B4D8] text-white hover:shadow-[0_0_16px_rgba(0,180,216,0.3)]"
           }`}>
             {loading ? (
@@ -204,7 +204,7 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
         {/* Result area */}
         <div className="flex-1 overflow-y-auto px-5 pb-4">
           {error && (
-            <div className={`rounded-xl border px-3 py-2.5 text-xs ${isDark ? "border-[#FF4D6A]/20 bg-[#FF4D6A]/5 text-[#FF4D6A]" : "border-red-200 bg-red-50 text-red-500"}`}>
+            <div className={`rounded-xl border px-3 py-2.5 text-xs ${isDark ? "border-[#F43F5E]/20 bg-[#F43F5E]/5 text-[#F43F5E]" : "border-red-200 bg-red-50 text-red-500"}`}>
               {error}
             </div>
           )}
@@ -212,18 +212,18 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
             <div>
               {/* P2-4: Previous result restore */}
               {previousResult && (
-                <button type="button" onClick={handleRestorePrevious} className={`mb-2 text-xs ${isDark ? "text-[#8B92A8]/60 hover:text-[#00D4FF]" : "text-gray-400 hover:text-[#00B4D8]"}`}>
+                <button type="button" onClick={handleRestorePrevious} className={`mb-2 text-xs ${isDark ? "text-[#475569] hover:text-[#00C6ED]" : "text-[#94A3B8] hover:text-[#00B4D8]"}`}>
                   ← 恢复上一版
                 </button>
               )}
-              <div className={`rounded-xl border p-3.5 ${isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/50" : "border-gray-100 bg-gray-50"}`}>
-                <pre className={`whitespace-pre-wrap break-words font-sans text-sm leading-relaxed ${isDark ? "text-white" : "text-gray-800"}`}>{result}</pre>
+              <div className={`rounded-xl border p-3.5 ${isDark ? "border-[rgba(148,163,184,0.08)] bg-[rgba(15,23,42,0.5)]" : "border-[rgba(0,0,0,0.04)] bg-gray-50"}`}>
+                <pre className={`whitespace-pre-wrap break-words font-sans text-sm leading-relaxed ${isDark ? "text-[#F1F5F9]" : "text-[#334155]"}`}>{result}</pre>
               </div>
               <div className="mt-2 flex justify-end">
                 <button type="button" onClick={handleCopy} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-all ${
                   copied
-                    ? "text-[#00E5A0]"
-                    : isDark ? "text-[#00D4FF] hover:bg-[#00D4FF]/8" : "text-[#00B4D8] hover:bg-blue-50"
+                    ? "text-[#10B981]"
+                    : isDark ? "text-[#00C6ED] hover:bg-[#00C6ED]/5" : "text-[#00B4D8] hover:bg-blue-50"
                 }`}>
                   {copied ? (
                     <><svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>已复制</>
@@ -235,7 +235,7 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
             </div>
           )}
           {!result && !error && !loading && (
-            <div className={`flex h-24 items-center justify-center text-xs ${isDark ? "text-[#8B92A8]/40" : "text-gray-300"}`}>
+            <div className={`flex h-24 items-center justify-center text-xs ${isDark ? "text-[#334155]" : "text-[#CBD5E1]"}`}>
               点击上方按钮开始生成
             </div>
           )}

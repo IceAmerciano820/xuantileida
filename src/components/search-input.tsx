@@ -28,7 +28,7 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
     <div className="space-y-2">
       <div className="flex flex-col gap-2.5 sm:flex-row">
         <div className="relative min-w-0 flex-1">
-          <svg className={`pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 ${isDark ? "text-[#8B92A8]" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <svg className={`pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 ${isDark ? "text-[#64748B]" : "text-[#94A3B8]"}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
           <input
@@ -39,10 +39,10 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
             onKeyDown={handleKeyDown}
             placeholder="输入关键词，如：搞钱、副业、AI工具..."
             disabled={loading}
-            className={`h-11 w-full rounded-[10px] border pl-10 pr-4 text-sm outline-none transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`h-11 w-full rounded-[10px] border pl-10 pr-4 text-sm outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 search-input-glow ${
               isDark
-                ? "border-[rgba(0,212,255,0.12)] bg-[#12162A] text-white placeholder:text-[#8B92A8]/60 focus:border-[#00D4FF]/50 focus:shadow-[0_0_12px_rgba(0,212,255,0.1)]"
-                : "border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#00B4D8]/50 focus:shadow-[0_0_12px_rgba(0,180,216,0.1)]"
+                ? "border-[rgba(148,163,184,0.1)] bg-[rgba(22,27,45,0.6)] text-[#F1F5F9] placeholder:text-[#64748B] focus:border-[#00C6ED]/40"
+                : "border-[rgba(0,0,0,0.08)] bg-white text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#00B4D8]/40"
             }`}
           />
         </div>
@@ -50,17 +50,15 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
           type="button"
           onClick={onSubmit}
           disabled={loading}
-          className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] px-5 text-sm font-semibold transition-all hover:scale-[1.02] active:scale-[0.97] disabled:cursor-not-allowed disabled:scale-100 ${
+          className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] px-5 text-sm font-semibold transition-all duration-200 hover:-translate-y-px active:scale-[0.97] disabled:cursor-not-allowed disabled:translate-y-0 disabled:scale-100 ${
             loading
-              ? "bg-[#00D4FF]/30 text-[#0A0E1A]/50 shadow-none"
-              : isDark
-                ? "bg-[#00D4FF] text-[#0A0E1A] hover:shadow-[0_0_16px_rgba(0,212,255,0.3)]"
-                : "bg-[#00B4D8] text-white hover:shadow-[0_0_16px_rgba(0,180,216,0.3)]"
+              ? "bg-[#00C6ED]/30 text-white/50 shadow-none"
+              : "btn-cta"
           }`}
         >
           {loading ? (
             <>
-              <RadarScanAnimation size={18} className={isDark ? "text-[#0A0E1A]" : "text-white"} />
+              <RadarScanAnimation size={18} className="text-white" />
               <span>雷达扫描中...</span>
             </>
           ) : (
@@ -71,7 +69,7 @@ export function SearchInput({ value, onChange, onSubmit, loading, error }: Searc
           )}
         </button>
       </div>
-      {error && <p className="text-xs text-[#FF4D6A]">{error}</p>}
+      {error && <p className="text-xs text-[#F43F5E]">{error}</p>}
     </div>
   );
 }

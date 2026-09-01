@@ -20,9 +20,9 @@ interface FavoritesModalProps {
 type ModalTab = "list" | "calendar";
 
 const STATUS_CONFIG: Record<FavoriteStatus, { label: string; color: string; bg: string; dot: string }> = {
-  draft: { label: "待构思", color: "#8B92A8", bg: "rgba(139,146,168,0.12)", dot: "#8B92A8" },
-  scheduled: { label: "撰写中", color: "#FF6B35", bg: "rgba(255,107,53,0.12)", dot: "#FF6B35" },
-  published: { label: "已发布", color: "#00E5A0", bg: "rgba(0,229,160,0.12)", dot: "#00E5A0" },
+  draft: { label: "待构思", color: "#94A3B8", bg: "rgba(148,163,184,0.12)", dot: "#94A3B8" },
+  scheduled: { label: "撰写中", color: "#F59E0B", bg: "rgba(245,158,11,0.12)", dot: "#F59E0B" },
+  published: { label: "已发布", color: "#10B981", bg: "rgba(16,185,129,0.12)", dot: "#10B981" },
 };
 
 const STATUS_ORDER: FavoriteStatus[] = ["draft", "scheduled", "published"];
@@ -320,52 +320,52 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`absolute inset-0 ${isDark ? "bg-black/60" : "bg-black/40"} backdrop-blur-sm`} />
-      <div className={`relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl ${
-        isDark ? "border-[rgba(0,212,255,0.15)] bg-[#1A1F2E]" : "border-gray-200 bg-white"
+      <div className={`relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl ${
+        isDark ? "border-[rgba(148,163,184,0.1)] bg-[#0F172A]/95" : "border-[rgba(0,0,0,0.06)] bg-white/98"
       }`}>
         {/* Header */}
         <div className={`flex items-center justify-between border-b px-5 py-3.5 ${
-          isDark ? "border-[rgba(0,212,255,0.08)]" : "border-gray-100"
+          isDark ? "border-[rgba(148,163,184,0.08)]" : "border-[rgba(0,0,0,0.06)]"
         }`}>
           <div className="flex items-center gap-2">
-            <svg className={`h-4 w-4 ${isDark ? "text-[#00D4FF]" : "text-[#00B4D8]"}`} fill="currentColor" viewBox="0 0 24 24">
+            <svg className={`h-4 w-4 ${isDark ? "text-[#00C6ED]" : "text-[#00B4D8]"}`} fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z" />
             </svg>
-            <h2 className={`text-sm font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
-              我的灵感库 <span className={`font-normal ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>({favorites.length})</span>
+            <h2 className={`text-sm font-semibold ${isDark ? "text-[#F1F5F9]" : "text-[#0F172A]"}`}>
+              我的灵感库 <span className={`font-normal ${isDark ? "text-[#64748B]" : "text-[#94A3B8]"}`}>({favorites.length})</span>
             </h2>
           </div>
           <div className="flex items-center gap-2">
             {favorites.length > 0 && (
               <div className="relative">
-                <button type="button" onClick={() => setShowExportMenu(!showExportMenu)} className={`text-xs transition-colors ${isDark ? "text-[#00D4FF]/70 hover:text-[#00D4FF]" : "text-[#00B4D8]/70 hover:text-[#00B4D8]"}`}>
+                <button type="button" onClick={() => setShowExportMenu(!showExportMenu)} className={`text-xs transition-colors ${isDark ? "text-[#00C6ED]/70 hover:text-[#00C6ED]" : "text-[#00B4D8]/70 hover:text-[#00B4D8]"}`}>
                   导出 ▾
                 </button>
                 {showExportMenu && (
                   <div className={`absolute right-0 top-full z-30 mt-1.5 w-44 overflow-hidden rounded-xl border shadow-2xl ${
-                    isDark ? "border-[rgba(0,212,255,0.12)] bg-[#1A1F2E]" : "border-gray-200 bg-white"
+                    isDark ? "border-[rgba(148,163,184,0.1)] bg-[#0F172A]" : "border-[rgba(0,0,0,0.06)] bg-white"
                   }`}>
-                    <button type="button" onClick={handleExportWeeklyPlan} className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors ${isDark ? "text-[#00E5A0] hover:bg-[#252B3D]" : "text-emerald-600 hover:bg-gray-50"}`}>
+                    <button type="button" onClick={handleExportWeeklyPlan} className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors ${isDark ? "text-[#10B981] hover:bg-[rgba(148,163,184,0.06)]" : "text-emerald-600 hover:bg-gray-50"}`}>
                       <svg className="mr-2 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
                       导出本周选题计划
                     </button>
-                    <button type="button" onClick={handleExportMarkdown} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>导出 Markdown</button>
-                    <button type="button" onClick={handleExportCSV} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>导出 CSV</button>
-                    <button type="button" onClick={handleExportJSON} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(0,212,255,0.06)] text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "border-gray-100 text-gray-600 hover:bg-gray-50"}`}>导出 JSON</button>
+                    <button type="button" onClick={handleExportMarkdown} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#94A3B8] hover:bg-[rgba(148,163,184,0.06)] hover:text-[#F1F5F9]" : "border-gray-100 text-[#64748B] hover:bg-gray-50"}`}>导出 Markdown</button>
+                    <button type="button" onClick={handleExportCSV} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#94A3B8] hover:bg-[rgba(148,163,184,0.06)] hover:text-[#F1F5F9]" : "border-gray-100 text-[#64748B] hover:bg-gray-50"}`}>导出 CSV</button>
+                    <button type="button" onClick={handleExportJSON} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#94A3B8] hover:bg-[rgba(148,163,184,0.06)] hover:text-[#F1F5F9]" : "border-gray-100 text-[#64748B] hover:bg-gray-50"}`}>导出 JSON</button>
                   </div>
                 )}
               </div>
             )}
-            <button type="button" onClick={handleImportJSON} className={`text-xs transition-colors ${isDark ? "text-[#00E5A0]/70 hover:text-[#00E5A0]" : "text-emerald-500/70 hover:text-emerald-500"}`} title="从 JSON 文件导入">
+            <button type="button" onClick={handleImportJSON} className={`text-xs transition-colors ${isDark ? "text-[#10B981]/70 hover:text-[#10B981]" : "text-emerald-500/70 hover:text-emerald-500"}`} title="从 JSON 文件导入">
               导入
             </button>
             {favorites.length > 0 && (
-              <button type="button" onClick={onClear} className="text-xs text-[#FF4D6A]/70 hover:text-[#FF4D6A]">
+              <button type="button" onClick={onClear} className="text-xs text-[#F43F5E]/70 hover:text-[#F43F5E]">
                 清空
               </button>
             )}
             <button type="button" onClick={onClose} className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-              isDark ? "text-[#8B92A8] hover:bg-[#252B3D] hover:text-white" : "text-gray-400 hover:bg-gray-100"
+              isDark ? "text-[#64748B] hover:bg-[rgba(148,163,184,0.08)] hover:text-[#F1F5F9]" : "text-[#94A3B8] hover:bg-gray-100"
             }`}>
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -376,15 +376,15 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
 
         {/* Tabs */}
         {favorites.length > 0 && (
-          <div className={`flex gap-1 border-b px-5 py-2 ${isDark ? "border-[rgba(0,212,255,0.08)]" : "border-gray-100"}`}>
+          <div className={`flex gap-1 border-b px-5 py-2 ${isDark ? "border-[rgba(148,163,184,0.08)]" : "border-[rgba(0,0,0,0.06)]"}`}>
             {([
               { value: "list" as const, label: "灵感列表" },
               { value: "calendar" as const, label: "排期日历" },
             ]).map((tab) => (
               <button key={tab.value} type="button" onClick={() => setActiveTab(tab.value)} className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                 activeTab === tab.value
-                  ? (isDark ? "bg-[#00D4FF]/15 text-[#00D4FF]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
-                  : (isDark ? "text-[#8B92A8] hover:text-white" : "text-gray-500 hover:text-gray-700")
+                  ? (isDark ? "bg-[#00C6ED]/15 text-[#00C6ED]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
+                  : (isDark ? "text-[#64748B] hover:text-[#F1F5F9]" : "text-[#94A3B8] hover:text-[#0F172A]")
               }`}>{tab.label}</button>
             ))}
           </div>

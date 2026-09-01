@@ -11,6 +11,7 @@ import { TrendCompareChart, type KeywordTrend } from "@/components/trend-compare
 import { GenerateContentModal } from "@/components/generate-content-modal";
 import { FavoritesModal } from "@/components/favorites-modal";
 import { RadarIcon, RadarBackground } from "@/components/radar-icon";
+import { LandingView } from "@/components/landing-view";
 
 export type FavoriteStatus = "draft" | "scheduled" | "published";
 export type TrendTag = "暴涨" | "平稳" | "降温" | "潜力黑马";
@@ -499,14 +500,6 @@ function InnerApp() {
 
   const handleSubmit = useCallback(() => { handleSearch(keyword); }, [handleSearch, keyword]);
   const handleKeywordClick = useCallback((kw: string) => { setKeyword(kw); setInputError(null); handleSearch(kw); }, [handleSearch]);
-  const handleKeywordFill = useCallback((kw: string) => { setKeyword(kw); setInputError(null); }, []);
-
-  // P1-1: "随便看看" handler
-  const handleExplore = useCallback(() => {
-    const randomKw = HOT_KEYWORDS[Math.floor(Math.random() * HOT_KEYWORDS.length)];
-    setKeyword(randomKw);
-    doSearch(randomKw, timeRange, REQUEST_COUNT);
-  }, [doSearch, timeRange]);
 
   // P1-2: Load more
   const handleLoadMore = useCallback(() => {
@@ -786,10 +779,10 @@ function InnerApp() {
       <RadarBackground isDark={isDark} />
 
       {/* Header */}
-      <header className={`sticky top-0 z-20 border-b backdrop-blur-xl no-print ${
-        isDark ? "border-[rgba(0,212,255,0.08)] bg-[#0A0E1A]/90" : "border-gray-200 bg-white/90"
+      <header className={`sticky top-0 z-40 no-print ${
+        isDark ? "header-glass-dark" : "header-glass-light"
       }`}>
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between px-4 sm:px-6">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isDark ? "bg-[#00D4FF]/10" : "bg-[#00B4D8]/10"}`}>
@@ -906,10 +899,10 @@ function InnerApp() {
       {/* Gradient banner */}
       <div className="h-1 w-full bg-gradient-to-r from-[#FF6B35] via-[#FF8C42] to-[#00D4FF] no-print" />
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-5 sm:px-6 sm:py-8">
+      <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-5 sm:px-6 sm:py-8">
         {/* Search Section */}
-        <section className={`mb-5 rounded-2xl border p-4 backdrop-blur-xl sm:p-5 no-print ${
-          isDark ? "border-[rgba(0,212,255,0.08)] bg-[#12162A]/50" : "border-gray-200 bg-white shadow-sm"
+        <section className={`mb-5 rounded-[14px] p-4 backdrop-blur-xl sm:p-5 no-print ${
+          isDark ? "glass-card-dark" : "glass-card-light"
         }`}>
           <SearchInput value={keyword} onChange={setKeyword} onSubmit={handleSubmit} loading={loading} error={inputError} />
 
@@ -952,18 +945,37 @@ function InnerApp() {
         {/* No Results */}
         {hasNoResults && !loading && <EmptyState variant="no-results" message={results.message} onKeywordClick={handleKeywordClick} />}
 
-        {/* Initial */}
-        {!loading && !results && !networkError && <EmptyState variant="initial" onExplore={handleExplore} onKeywordClick={handleKeywordClick} />}
+        {/* Initial - Landing View with hot topics + track exploration */}
+        {!loading && !results && !networkError && (
+          <LandingView onSearch={(kw) => { setKeyword(kw); doSearch(kw, timeRange, REQUEST_COUNT); }} />
+        )}
 
         {/* Results */}
         {hasResults && (
           <section>
             {/* Results header */}
             <div className="mb-3 flex items-center justify-between">
-              <p className={`text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-600"}`}>
-                找到 <span className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>{displayedTopics.length}</span> 条相关热点
-                <span className={`ml-1.5 text-xs ${isDark ? "text-[#8B92A8]/50" : "text-gray-400"}`}>{TIME_RANGE_LABELS[timeRange]}</span>
-              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setResults(null); setSearchedKeyword(""); setKeyword(""); setDisplayCount(20); setResultTab("all"); setPlatformFilter("全部"); setTrackFilter("全部"); }}
+                  className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-all ${
+                    isDark
+                      ? "text-[#64748B] hover:bg-[rgba(22,27,45,0.8)] hover:text-[#94A3B8]"
+                      : "text-[#94A3B8] hover:bg-gray-100 hover:text-[#475569]"
+                  }`}
+                  title="返回首页"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                  </svg>
+                  首页
+                </button>
+                <p className={`text-sm ${isDark ? "text-[#94A3B8]" : "text-[#475569]"}`}>
+                  找到 <span className={`font-medium ${isDark ? "text-[#F1F5F9]" : "text-[#0F172A]"}`}>{displayedTopics.length}</span> 条相关热点
+                  <span className={`ml-1.5 text-xs ${isDark ? "text-[#64748B]" : "text-[#94A3B8]"}`}>{TIME_RANGE_LABELS[timeRange]}</span>
+                </p>
+              </div>
             </div>
 
             {/* v2.1: Tab bar (全部 | 潜力热点 | 风险提示) */}
@@ -1245,10 +1257,10 @@ function InnerApp() {
       </main>
 
       {/* Footer */}
-      <footer className="py-3 no-print">
+      <footer className="py-4 no-print">
         <div className="flex flex-col items-center gap-1">
-          <p className={`text-center text-[11px] ${isDark ? "text-[#8B92A8]/30" : "text-gray-400"}`}>
-            选题雷达 {APP_VERSION} · 收藏数据存储于本地浏览器，清理浏览器缓存将丢失收藏，请定期导出备份。数据来源：全网公开热点信息聚合（资讯+社交平台）｜仅供选题参考
+          <p className={`text-center text-[11px] ${isDark ? "text-[#475569]" : "text-[#94A3B8]"}`}>
+            选题雷达 {APP_VERSION} · 数据存于本地浏览器，请定期导出备份
           </p>
         </div>
       </footer>

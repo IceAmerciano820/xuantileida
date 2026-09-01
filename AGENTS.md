@@ -70,17 +70,21 @@
 
 面向内容创作者的热点选题发现工具，核心功能：
 
-- **搜索入口**：`src/app/page.tsx` - 主页面，包含搜索表单和结果展示
-- **API 路由**：`src/app/api/search/route.ts` - 热点搜索接口，使用 web-search SDK 聚合多平台数据，LLM 生成创作角度建议
+- **搜索入口**：`src/app/page.tsx` - 主页面，包含搜索表单、结果展示、三态视图管理（未搜索/搜索中/已搜索）
+- **API 路由**：
+  - `src/app/api/search/route.ts` - 热点搜索接口，支持 SSE 流式返回（首屏20条优先），使用 web-search SDK 聚合多平台数据，LLM 并行生成创作角度建议
+  - `src/app/api/generate/route.ts` - AI 内容生成接口
+  - `src/app/api/trend-compare/route.ts` - 趋势对比接口
 - **组件**：
   - `src/components/radar-icon.tsx` - 雷达图标组件（Logo图标、扫描动画、脉冲点、背景装饰）
+  - `src/components/landing-view.tsx` - 首屏默认视图（今日热点速览 + 赛道探索卡片，自动加载热点预览）
   - `src/components/search-input.tsx` - 搜索输入框组件
   - `src/components/result-card.tsx` - 热点结果卡片组件
-  - `src/components/loading-skeleton.tsx` - 加载骨架屏
+  - `src/components/loading-skeleton.tsx` - 加载骨架屏（含SSE进度条）
   - `src/components/empty-state.tsx` - 空状态引导
   - `src/components/heat-trend-chart.tsx` - 热度趋势图
   - `src/components/generate-content-modal.tsx` - 生成内容弹窗
-  - `src/components/favorites-modal.tsx` - 灵感库弹窗
+  - `src/components/favorites-modal.tsx` - 灵感库弹窗（含笔记/标签/导入导出/排期日历）
   - `src/components/modal.tsx` - 通用弹窗组件
   - `src/hooks/use-theme.tsx` - 深色/浅色主题上下文
 
