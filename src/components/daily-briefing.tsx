@@ -65,13 +65,41 @@ const TREND_STYLES: Record<string, { color: string; bg: string }> = {
   "平稳": { color: "#94A3B8", bg: "rgba(148,163,184,0.1)" },
 };
 
+interface HotWord {
+  title: string;
+  platform: string;
+}
+
 export function DailyBriefing({ monitoredKeywords, onSearch, onOpenMonitor }: DailyBriefingProps) {
   const { isDark } = useTheme();
   const [briefing, setBriefing] = useState<DailyBriefingData | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, keyword: "" });
   const [viewDate, setViewDate] = useState(getTodayStr());
+  const [hotWords, setHotWords] = useState<HotWord[]>([]);
   const abortRef = useRef(false);
+
+  // Fetch hot words from hotboards
+  useEffect(() => {
+    const fetchHotWords = async () => {
+      try {
+        const res = await fetch("/api/hotboards");
+        const data = await res.json();
+        const boards = data.boards || [];
+        const words: HotWord[] = [];
+        for (const board of boards) {
+          const items = board.items || [];
+          for (let i = 0; i < Math.min(3, items.length); i++) {
+            words.push({ title: items[i].title, platform: board.name });
+          }
+        }
+        setHotWords(words);
+      } catch {
+        // Ignore errors
+      }
+    };
+    fetchHotWords();
+  }, []);
 
   // Load existing briefing or trigger auto-scan
   useEffect(() => {
@@ -251,6 +279,39 @@ export function DailyBriefing({ monitoredKeywords, onSearch, onOpenMonitor }: Da
 
   return (
     <div className="space-y-3">
+      {/* Hot Words Section */}
+      {hotWords.length > 0 && (
+        <div className={`rounded-[14px] border p-4 ${
+          isDark ? "border-[rgba(148,163,184,0.08)] bg-[rgba(22,27,45,0.6)]" : "border-[rgba(0,0,0,0.04)] bg-white"
+        }`}>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm">🔥</span>
+            <span className={`text-xs font-medium ${isDark ? "text-[#94A3B8]" : "text-[#64748B]"}`}>
+              今日全网热词
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hotWords.map((hw, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSearch(hw.title)}
+                className={`group flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-all ${
+                  isDark
+                    ? "bg-[rgba(148,163,184,0.08)] text-[#94A3B8] hover:bg-[rgba(0,198,237,0.15)] hover:text-[#00C6ED]"
+                    : "bg-[rgba(0,0,0,0.04)] text-[#64748B] hover:bg-[rgba(0,180,216,0.1)] hover:text-[#00B4D8]"
+                }`}
+              >
+                <span className={`text-[10px] ${isDark ? "text-[#475569]" : "text-[#94A3B8]"}`}>
+                  {hw.platform.replace("热搜", "").replace("热榜", "")}
+                </span>
+                <span className="max-w-[120px] truncate">{hw.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

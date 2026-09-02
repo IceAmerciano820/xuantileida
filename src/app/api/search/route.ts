@@ -465,11 +465,13 @@ function generateFallbackAnalysis(title: string, keyword: string, heatScore: num
   const relatedWords = baseRelatedWords.slice(0, 7);
 
   // v2.7: More specific scoreReason, avoid generic phrases
+  // Use title entities to make it specific
+  const entityHint = entities.length > 0 ? entities[0] : title.slice(0, 6);
   const scoreReason = heatScore >= 70
-    ? `近期讨论集中，有多个具体事件/产品可切入，适合做深度内容`
+    ? `「${entityHint}」近期讨论集中，有多个具体事件/产品可切入`
     : heatScore >= 50
-    ? `有一定讨论度但角度还没被写烂，找个独特切入点还有机会`
-    : `热度不算高，竞争小，适合小众赛道博主先占位积累`;
+    ? `「${entityHint}」有新鲜讨论点，结合个人经历能做出差异化`
+    : `「${entityHint}」竞争不算激烈，适合先占位积累`;
 
   return {
     trendTag,

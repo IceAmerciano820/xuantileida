@@ -54,6 +54,45 @@ const HOT_SOURCES = {
       })).filter(i => i.title);
     },
   },
+  weibo: {
+    name: "微博热搜",
+    key: "weibo",
+    urls: [
+      "https://weibo.com/ajax/side/hotSearch",
+    ],
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      Referer: "https://weibo.com/",
+    },
+    parse: (data: Record<string, unknown>): HotItem[] => {
+      const realtime = (data.data as Record<string, unknown> | undefined)?.realtime as Array<Record<string, unknown>> | undefined;
+      if (!realtime) return [];
+      return realtime.map((item, idx) => ({
+        title: (item.word as string) || "",
+        hot: (item.num as number) || (50 - idx) * 10000,
+        url: `https://s.weibo.com/weibo?q=${encodeURIComponent(item.word as string || "")}`,
+      })).filter(i => i.title);
+    },
+  },
+  douyin: {
+    name: "抖音热榜",
+    key: "douyin",
+    urls: [
+      "https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/",
+    ],
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    },
+    parse: (data: Record<string, unknown>): HotItem[] => {
+      const wordList = data.word_list as Array<Record<string, unknown>> | undefined;
+      if (!wordList) return [];
+      return wordList.map((item, idx) => ({
+        title: (item.word as string) || "",
+        hot: (item.hot_value as number) || (50 - idx) * 100000,
+        url: `https://www.douyin.com/search/${encodeURIComponent(item.word as string || "")}`,
+      })).filter(i => i.title);
+    },
+  },
 };
 
 interface HotItem {
@@ -75,7 +114,7 @@ let cachedBoards: HotBoard[] | null = null;
 let cacheTime = 0;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = 5000, customHeaders?: Record<string, string>): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -84,6 +123,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         Accept: "application/json",
+        ...customHeaders,
       },
     });
     return res;
@@ -100,9 +140,11 @@ async function fetchBoard(key: string, source: typeof HOT_SOURCES[keyof typeof H
     updatedAt: Date.now(),
   };
 
+  const customHeaders = "headers" in source ? source.headers : undefined;
+
   for (const url of source.urls) {
     try {
-      const res = await fetchWithTimeout(url, 5000);
+      const res = await fetchWithTimeout(url, 5000, customHeaders);
       if (!res.ok) continue;
       const data = await res.json() as Record<string, unknown>;
       const items = source.parse(data);
