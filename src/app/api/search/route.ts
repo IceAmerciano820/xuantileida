@@ -163,7 +163,20 @@ const PROMO_PATTERNS = [
   /副业.*赚钱/,
   // v2.7.4: 推荐类软文
   /(推荐|安利).*(兼职|副业|赚钱|搞钱)/,
+  // v2.7.5: 推荐指南类软文 - 标题含推荐指南/优选/排行榜/盘点 + 工具/平台/软件/APP，且正文含裂变/涨粉/出单/变现/带货
 ];
+
+// v2.7.5: 推荐指南类软文检测（需要标题和正文组合判断）
+function isRecommendationSpam(title: string, snippet: string): boolean {
+  const titleLower = title.toLowerCase();
+  const snippetLower = snippet.toLowerCase();
+  // 标题含推荐指南/优选/排行榜/盘点 + 工具/平台/软件/APP
+  const hasRecommendPattern = /(推荐指南|优选|排行榜|盘点|十大|榜单)/.test(titleLower);
+  const hasToolPattern = /(工具|平台|软件|app|系统)/.test(titleLower);
+  // 正文含裂变/涨粉/出单/变现/带货
+  const hasMonetizePattern = /(裂变|涨粉|出单|变现|带货|引流|获粉|吸粉)/.test(snippetLower);
+  return hasRecommendPattern && hasToolPattern && hasMonetizePattern;
+}
 
 // v2.7: 政务/公告类过滤
 const GOV_PATTERNS = [
@@ -205,6 +218,8 @@ function detectPromotional(title: string, snippet: string): boolean {
   if (PROMO_SIGNALS.some((sig) => text.includes(sig.toLowerCase()))) return true;
   // Check regex patterns
   if (PROMO_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  // v2.7.5: 推荐指南类软文
+  if (isRecommendationSpam(title, snippet)) return true;
   return false;
 }
 
@@ -229,9 +244,14 @@ const DOMAIN_FAMILY_MAP: Record<string, string> = {
   "weibo.cn": "sina",
   "weibo.com": "sina",
   "weibo.com.cn": "sina",
-  // toutiao family (zjurl.cn is NOT toutiao - it's a separate URL shortener)
+  "k.sina.cn": "sina",
+  "k.sina.com.cn": "sina",
+  // toutiao family (v2.7.5: include weitoutiao.zjurl.cn as byteDance domain)
   "toutiao.com": "toutiao",
   "toutiao.cn": "toutiao",
+  "m.toutiao.com": "toutiao",
+  "www.toutiao.com": "toutiao",
+  "weitoutiao.zjurl.cn": "toutiao",
   // sohu family
   "sohu.com": "sohu",
   "sohu.com.cn": "sohu",
@@ -450,46 +470,49 @@ function extractTitleEntities(title: string): { entities: string[]; numbers: str
 }
 
 // v2.7: 20+ angle patterns, randomly selected, embedded with title entities
-// v2.7.4: Patterns with number slots only use numbers if available, otherwise use text alternatives
-const ANGLE_PATTERNS: Array<(kw: string, ent: string[], num: string[]) => string> = [
-  (kw, ent, num) => `实测${ent[0] || kw}完整流程，记录${num[0] ? num[0] + "个" : "每个"}步骤的真实耗时和踩坑点`,
-  (kw, ent, num) => `拍一支"${ent[0] || kw}新手最容易搞错的${num[0] ? num[0] + "个" : "几个"}点"短视频`,
+// v2.7.5: Remove ALL number placeholders - no more "N个" patterns to avoid absurd outputs like "4000个错误"
+const ANGLE_PATTERNS: Array<(kw: string, ent: string[]) => string> = [
+  (kw, ent) => `实测${ent[0] || kw}完整流程，记录每个步骤的真实耗时和踩坑点`,
+  (kw, ent) => `拍一支"${ent[0] || kw}新手最容易搞错的几个点"短视频`,
   () => `对比官方说法和实际操作，找出那些没写清楚的隐藏细节`,
-  (kw, ent) => `自费买了${ent[0] || "几款"}热门${kw}，逐个实测告诉你哪个值`,
+  (kw) => `自费买了几款热门${kw}，逐个实测告诉你哪个值`,
   () => `做一期红黑榜，踩雷的和真香的都列出来`,
   () => `从价格/效果/体验三个维度横向对比，给出不同预算的选择`,
   (kw, ent) => `整理了近半年的数据，${ent[0] || kw}的变化比你想的大`,
-  (kw, ent, num) => `跟${num[0] ? num[0] + "个" : "几位"}从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
+  (kw, ent) => `跟几位从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
   (kw) => `从政策/技术/市场三个层面分析${kw}的真实走向`,
   (kw, ent) => `围绕「${ent[0] || kw}」的最新动态，梳理事件关键争议点`,
   (kw) => `针对${kw}的常见误解，用实际数据或体验来澄清`,
-  (kw, ent, num) => `花${num[0] || "小几百"}块vs花${num[1] || "大几百"}块，${ent[0] || kw}差距到底在哪`,
-  (kw, ent, num) => `问了${num[0] ? num[0] + "个" : "几个"}朋友，他们对${ent[0] || kw}的回答让我意外`,
-  (kw, ent, num) => `我试了一周${ent[0] || kw}，踩了${num[0] ? num[0] + "个" : "几个"}坑`,
-  (kw, ent, num) => `${ent[0] || kw}的${num[0] ? num[0] + "个" : "几个"}真相，最让人意外的那个`,
-  (kw, ent, num) => `${ent[0] || kw}翻车实录：我花了${num[0] || "不少"}块买的教训`,
+  (kw, ent) => `不同价位的${ent[0] || kw}差距到底在哪，实测告诉你`,
+  (kw, ent) => `问了身边朋友，他们对${ent[0] || kw}的回答让我意外`,
+  (kw, ent) => `我试了一周${ent[0] || kw}，踩坑经历复盘`,
+  (kw, ent) => `${ent[0] || kw}的几个真相，最让人意外的那个`,
+  (kw, ent) => `${ent[0] || kw}翻车实录：花钱买的教训整理`,
   (kw) => `为什么${kw}突然火了？我挖了挖背后的原因`,
-  (kw, ent, num) => `${ent[0] || kw}避坑指南：这${num[0] ? num[0] + "个" : "几个"}错误我替你踩过了`,
-  (kw, ent, num) => `${ent[0] || kw}深度体验报告：用了${num[0] ? num[0] + "天" : "一段时间"}后的真实感受`,
+  (kw, ent) => `${ent[0] || kw}避坑指南：这些错误我替你踩过了`,
+  (kw, ent) => `${ent[0] || kw}深度体验报告：用了一段时间后的真实感受`,
   (kw) => `${kw}新手入门：从零开始的完整指南`,
-  (kw, ent, num) => `对比了${num[0] ? num[0] + "款" : "几款"}${ent[0] || kw}，这款性价比最高`,
-  (kw, ent, num) => `${ent[0] || kw}使用${num[0] ? num[0] + "天" : "一段时间"}后，说说真实体验`,
+  (kw, ent) => `对比了几款${ent[0] || kw}，这款性价比最高`,
+  (kw, ent) => `${ent[0] || kw}使用一段时间后，说说真实体验`,
   (kw) => `${kw}怎么选？看完这篇就不纠结了`,
-  (kw, ent) => `${ent[0] || kw}的隐藏用法，${kw}老手都不一定知道`,
-  (kw, ent, num) => `实测${num[0] ? num[0] + "种" : "几种"}${ent[0] || kw}方案，最便宜的反而最好用`,
+  (kw, ent) => `${ent[0] || kw}的隐藏用法，老手都不一定知道`,
+  (kw, ent) => `实测几种${ent[0] || kw}方案，最便宜的反而最好用`,
+  (kw, ent) => `${ent[0] || kw}上手技巧整理，新手必看`,
+  (kw, ent) => `扒一扒${ent[0] || kw}的真实体验，和宣传差多少`,
+  (kw) => `${kw}到底值不值得入？说说我的真实感受`,
 ];
 
 function generateFallbackAnalysis(title: string, keyword: string, heatScore: number): LLMAnalysisResult {
-  const { entities, numbers } = extractTitleEntities(title);
+  const { entities } = extractTitleEntities(title);
   
   let trendTag: TrendTag = "平稳";
   if (heatScore >= 75) trendTag = "暴涨";
   else if (heatScore >= 55 && heatScore < 75) trendTag = "潜力黑马";
   else if (heatScore < 30) trendTag = "降温";
 
-  // v2.7: Randomly select 3 unique angle patterns
+  // v2.7.5: Randomly select 3 unique angle patterns (no number slots)
   const shuffled = [...ANGLE_PATTERNS].sort(() => Math.random() - 0.5);
-  const angles = shuffled.slice(0, 3).map((pattern) => pattern(keyword, entities, numbers));
+  const angles = shuffled.slice(0, 3).map((pattern) => pattern(keyword, entities));
 
   // v2.7: Ensure relatedWords >= 5
   const baseRelatedWords = [
@@ -553,7 +576,8 @@ ${topicsDesc}
 - 禁止"首先/其次/最后"的机械结构
 - 禁止在同批结果中复用句式：每条angles和scoreReason必须独特，禁止"从一个普通用户的视角聊聊""自己试了一遍XX"这类万能句式在不同条目中重复出现
 - 所有输出用口语化表达，像真人在说话
-- 每条angles必须包含该热点的具体实体/事件/数字，不允许出现可套用到任何话题的空泛角度`;
+- 每条angles必须包含该热点的具体实体/事件/数字，不允许出现可套用到任何话题的空泛角度
+- 【数字使用规则】：angles中出现的具体数字必须是标题/摘要中的原始事实，且语义必须匹配。例如标题说"花4000元"，角度中可以说"花4000元"但不能说"4000个错误"。禁止将金额、年份等数字填入"N个"句式。如果标题中没有合适的数字，就不要在角度中使用具体数字，改用"几个""一些"等模糊表述`;
 
   // v2.7.1: Add retry logic for LLM calls
   const MAX_RETRIES = 2;
@@ -681,11 +705,21 @@ async function analyzeAllTopics(
     }
   }
 
+  // v2.7.5: Funnel logging - LLM results
+  const llmSuccessCount = allResults.filter(r => r !== undefined).length;
+  const llmFailCount = topics.length - llmSuccessCount;
+  console.log(`[漏斗] ${keyword} - ④LLM批处理: 成功${llmSuccessCount}条/失败${llmFailCount}条`);
+
   // Fill any gaps with fallback
+  let fallbackCount = 0;
   for (let i = 0; i < allResults.length; i++) {
     if (!allResults[i]) {
       allResults[i] = generateFallbackAnalysis(topics[i].title, keyword, topics[i].heatScore);
+      fallbackCount++;
     }
+  }
+  if (fallbackCount > 0) {
+    console.log(`[漏斗] ${keyword} - ④fallback补充:${fallbackCount}条`);
   }
 
   // v2.7: Post-processing - deduplicate angles and scoreReason across batch
@@ -813,9 +847,24 @@ export async function POST(request: NextRequest) {
     const allSearchPromises = [...searchPromises, ...socialMediaPromises];
     const results = await Promise.all(allSearchPromises);
 
+    // v2.7.5: Funnel logging - search results count
+    let baseSearchCount = 0;
+    let socialMediaCount = 0;
+    const socialMediaDetails: string[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const count = results[i]?.web_items?.length || 0;
+      if (i < searchQueries.length) {
+        baseSearchCount += count;
+      } else {
+        socialMediaCount += count;
+        const sitesIdx = i - searchQueries.length;
+        socialMediaDetails.push(`${socialMediaSites[sitesIdx]}:${count}条`);
+      }
+    }
+    console.log(`[漏斗] ${trimmedKeyword} - ①基础搜索:${baseSearchCount}条 ②社媒定向:${socialMediaCount}条 (${socialMediaDetails.join(', ')})`);
+
     // Dedup by URL, track matched queries
     const seenUrls = new Set<string>();
-    const seenTitles = new Set<string>();
     const allItems: Array<{
       title: string; source: string; url: string; snippet: string;
       heatScore: number; heatLevel: "high" | "medium" | "low";
@@ -837,8 +886,9 @@ export async function POST(request: NextRequest) {
 
         const itemUrl = item.url || "";
         const normalizedUrl = itemUrl.split("?")[0].split("#")[0];
+        // v2.7.5: Only dedup by URL, not title - same news from different sources is valid
         const dedupKey = normalizedUrl || normalizedTitle;
-        if (seenUrls.has(dedupKey) || seenTitles.has(normalizedTitle)) {
+        if (seenUrls.has(dedupKey)) {
           const existing = allItems.find(
             (it) => (it.url.split("?")[0].split("#")[0] || it.title) === dedupKey
           );
@@ -852,10 +902,12 @@ export async function POST(request: NextRequest) {
         const titleLower = normalizedTitle.toLowerCase();
         const snippetLower = cleanedSnippet.toLowerCase();
         const keywordLower = trimmedKeyword.toLowerCase();
+        // v2.7.5: Relaxed relevance - accept if keyword appears in title OR snippet
+        // Also accept if any 2+ char substring of keyword appears
         const isRelevant = titleLower.includes(keywordLower) ||
           snippetLower.includes(keywordLower) ||
-          keywordLower.split("").some((char: string) => titleLower.includes(char));
-        if (!isRelevant && keywordLower.length > 1) continue;
+          (keywordLower.length >= 2 && keywordLower.split("").some((char: string) => titleLower.includes(char)));
+        if (!isRelevant && keywordLower.length > 2) continue;
         if (isBlacklisted(itemUrl)) continue;
 
         // v2.7: 政务/公告类内容硬过滤
@@ -865,7 +917,6 @@ export async function POST(request: NextRequest) {
         if (rawPublishTime && !isWithinTimeRange(rawPublishTime, resolvedTimeRange)) continue;
 
         seenUrls.add(dedupKey);
-        seenTitles.add(normalizedTitle);
 
         const platform = inferPlatform(item.site_name || "", itemUrl);
         const heatScore = computeHeatScore(item.rank_score, item.sort_id);
@@ -886,7 +937,12 @@ export async function POST(request: NextRequest) {
       return b.heatScore - a.heatScore;
     });
 
+    // v2.7.5: Funnel logging - after collection
+    console.log(`[漏斗] ${trimmedKeyword} - ③收集去重后:${allItems.length}条`);
+
     // v2.7.1: 硬过滤 - 营销内容和政务内容直接移除，不从结果中返回
+    const promoCount = allItems.filter(it => it.isPromotional).length;
+    const govCount = allItems.filter(it => !it.isPromotional && isGovernmentContent(it.title, it.snippet)).length;
     const filteredItems = allItems.filter((it) => {
       // 移除营销软文
       if (it.isPromotional) return false;
@@ -895,9 +951,94 @@ export async function POST(request: NextRequest) {
       return true;
     });
 
-    // v2.7.1: 同主域名去重（每主域名最多3条），直接从数组移除超限条目
-    const dedupedItems = deduplicateByDomain(filteredItems);
+    // v2.7.5: Funnel logging - after filtering
+    console.log(`[漏斗] ${trimmedKeyword} - ⑤软文过滤移除:${promoCount}条 ⑥政务过滤移除:${govCount}条 过滤后:${filteredItems.length}条`);
+
+    // v2.7.5: 同主域名去重（每主域名最多3条），循环执行直到无超限
+    let dedupedItems = filteredItems;
+    let domainDedupRemoved = 0;
+    let prevLength = filteredItems.length;
+    do {
+      prevLength = dedupedItems.length;
+      dedupedItems = deduplicateByDomain(dedupedItems);
+      domainDedupRemoved = prevLength - dedupedItems.length;
+    } while (domainDedupRemoved > 0);
+
+    // v2.7.5: Funnel logging - after domain dedup
+    console.log(`[漏斗] ${trimmedKeyword} - ⑦主域去重移除:${domainDedupRemoved}条 去重后:${dedupedItems.length}条`);
+
+    // v2.7.5: 补位逻辑 - 如果去重后不足maxCount，放宽主域限制补位
     const topItems = dedupedItems.slice(0, maxCount);
+    if (topItems.length < maxCount) {
+      // 需要从 allItems 中补位（排除已在 topItems 中的）
+      const topUrls = new Set(topItems.map(it => it.url));
+      // 候选池：所有非软文、非政务、未在topItems中的条目
+      const candidates = allItems.filter(it => !topUrls.has(it.url) && !it.isPromotional && !isGovernmentContent(it.title, it.snippet));
+      
+      // v2.7.5: 放宽主域限制 - 如果候选充足但主域超限，允许每域最多5条
+      const relaxedMaxPerDomain = MAX_PER_DOMAIN + 2; // 放宽到5条
+      let replenished = 0;
+      for (const candidate of candidates) {
+        if (topItems.length >= maxCount) break;
+        
+        // 检查加入该候选后主域是否超限（使用放宽后的限制）
+        const candidateDomain = extractMainDomain(candidate.url);
+        const currentDomainCount = topItems.filter(it => extractMainDomain(it.url) === candidateDomain).length;
+        if (candidateDomain && currentDomainCount >= relaxedMaxPerDomain) continue;
+        
+        topItems.push(candidate);
+        replenished++;
+      }
+      
+      if (replenished > 0) {
+        console.log(`[漏斗] ${trimmedKeyword} - 补位:${replenished}条 补位后:${topItems.length}条`);
+      }
+    }
+
+    // v2.7.5: Final domain dedup check on the returned array - loop until no domain exceeds limit
+    let finalDedupIterations = 0;
+    while (finalDedupIterations < 5) {
+      const domainCounts = new Map<string, number>();
+      let hasExcess = false;
+      
+      // Count domains
+      for (const item of topItems) {
+        const domain = extractMainDomain(item.url);
+        if (domain) {
+          domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1);
+          if ((domainCounts.get(domain) || 0) > MAX_PER_DOMAIN) {
+            hasExcess = true;
+          }
+        }
+      }
+      
+      if (!hasExcess) break;
+      
+      // Remove excess items (keep first MAX_PER_DOMAIN for each domain)
+      const domainSeen = new Map<string, number>();
+      const toRemove: number[] = [];
+      for (let i = 0; i < topItems.length; i++) {
+        const domain = extractMainDomain(topItems[i].url);
+        if (domain) {
+          const count = domainSeen.get(domain) || 0;
+          if (count >= MAX_PER_DOMAIN) {
+            toRemove.push(i);
+          } else {
+            domainSeen.set(domain, count + 1);
+          }
+        }
+      }
+      
+      // Remove items in reverse order to maintain indices
+      for (let i = toRemove.length - 1; i >= 0; i--) {
+        topItems.splice(toRemove[i], 1);
+      }
+      
+      finalDedupIterations++;
+    }
+
+    // v2.7.5: Funnel logging - final count
+    console.log(`[漏斗] ${trimmedKeyword} - ⑧最终返回:${topItems.length}条`);
 
     if (topItems.length === 0) {
       const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
