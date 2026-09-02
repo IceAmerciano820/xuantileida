@@ -150,6 +150,16 @@ const PROMO_PATTERNS = [
   /副业.*日入[\d.]+/,
   /[\d.]+倍.*收益/,
   /[\d.]+%.*转化率/,
+  // v2.7.2: 更多营销特征
+  /亲测.*(可靠|赚钱|副业|生意)/,
+  /下班就能赚/,
+  /可靠副业/,
+  /副业小生意/,
+  /亲测可靠/,
+  /月入\d+/,
+  /日入\d+/,
+  /赚钱.*副业/,
+  /副业.*赚钱/,
 ];
 
 // v2.7: 政务/公告类过滤
@@ -165,6 +175,14 @@ const GOV_PATTERNS = [
   /新闻发布会/,
   /政策.*解读/,
   /条例.*实施/,
+  // v2.7.2: 更多通稿特征
+  /圆满落幕/,
+  /成功举办/,
+  /正式开幕/,
+  /胜利闭幕/,
+  /圆满收官/,
+  /顺利召开/,
+  /隆重开幕/,
 ];
 
 function isGovernmentContent(title: string, snippet: string): boolean {
@@ -202,9 +220,31 @@ function extractDomain(url: string): string {
 function extractMainDomain(url: string): string {
   const domain = extractDomain(url);
   if (!domain) return "";
+  
+  // Special handling for known domain families
+  // sina family: sina.cn, sina.com.cn, sina.com, weibo.cn, etc.
+  if (/\b(sina|weibo)\.(cn|com|com\.cn|net)$/i.test(domain)) return "sina";
+  // toutiao family: toutiao.com, zjurl.cn, etc.
+  if (/\b(toutiao|zjurl)\.(com|cn)$/i.test(domain)) return "toutiao";
+  // sohu family: sohu.com, etc.
+  if (/\bsohu\.com$/i.test(domain)) return "sohu";
+  // smzdm family: smzdm.com, etc.
+  if (/\bsmzdm\.com$/i.test(domain)) return "smzdm";
+  // baidu family: baidu.com, etc.
+  if (/\bbaidu\.com$/i.test(domain)) return "baidu";
+  // qq family: qq.com, etc.
+  if (/\bqq\.com$/i.test(domain)) return "qq";
+  // 163 family: 163.com, etc.
+  if (/\b163\.com$/i.test(domain)) return "163";
+  // ifeng family: ifeng.com, etc.
+  if (/\bifeng\.com$/i.test(domain)) return "ifeng";
+  // cetv/cntv family
+  if (/\b(cctv|cntv|cetv)\.com$/i.test(domain)) return "cctv";
+  
   // Handle common Chinese domains and special cases
   const parts = domain.split(".");
   if (parts.length <= 2) return domain;
+  
   // For domains like "m.toutiao.com", "k.sina.cn", return "toutiao.com", "sina.cn"
   // Special handling for common Chinese TLDs
   const chineseTlds = ["com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn"];
@@ -382,8 +422,7 @@ const ANGLE_PATTERNS: Array<(kw: string, ent: string[], num: string[]) => string
   (kw, ent) => `整理了近半年的数据，${ent[0] || kw}的变化比你想的大`,
   (kw, ent, num) => `跟${num[0] || "3"}个从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
   (kw) => `从政策/技术/市场三个层面分析${kw}的真实走向`,
-  (kw, ent) => `围绕「${ent[0] || kw}」的最新动态，梳理事件来龙去脉和关键争议点`,
-  (kw, ent, num) => `找${num[0] || "3-5"}个真实用户案例，讲讲他们使用${ent[0] || kw}前后的变化`,
+  (kw, ent) => `围绕「${ent[0] || kw}」的最新动态，梳理事件关键争议点`,
   (kw) => `针对${kw}的常见误解，用实际数据或体验来澄清`,
   (kw, ent, num) => `花${num[0] || "50"}块vs花${num[1] || "500"}块，${ent[0] || kw}差距到底在哪`,
   (kw, ent, num) => `问了${num[0] || "10"}个朋友，他们对${ent[0] || kw}的回答让我意外`,
@@ -397,6 +436,8 @@ const ANGLE_PATTERNS: Array<(kw: string, ent: string[], num: string[]) => string
   (kw, ent, num) => `对比了${num[0] || "5"}款${ent[0] || kw}，这款性价比最高`,
   (kw, ent, num) => `${ent[0] || kw}使用${num[0] || "30"}天后，说说真实体验`,
   (kw) => `${kw}怎么选？看完这篇就不纠结了`,
+  (kw, ent) => `${ent[0] || kw}的隐藏用法，${kw}老手都不一定知道`,
+  (kw, ent, num) => `实测${num[0] || "5"}种${ent[0] || kw}方案，最便宜的反而最好用`,
 ];
 
 function generateFallbackAnalysis(title: string, keyword: string, heatScore: number): LLMAnalysisResult {

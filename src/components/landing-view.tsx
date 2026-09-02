@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/hooks/use-theme";
+import { HotboardsSection } from "@/components/hotboards-section";
 
 interface QuickTopic {
   id: string;
@@ -92,6 +93,9 @@ export function LandingView({ onSearch }: LandingViewProps) {
 
   return (
     <div className="space-y-8">
+      {/* Hot Boards Section */}
+      <HotboardsSection onSearch={onSearch} />
+
       {/* Hot Topics Overview */}
       <section>
         <div className="mb-4 flex items-center gap-2">
