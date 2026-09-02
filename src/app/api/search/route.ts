@@ -148,18 +148,21 @@ const PROMO_PATTERNS = [
   /亲测.*月入[\d.]+/,
   /接单赚钱/,
   /副业.*日入[\d.]+/,
-  /[\d.]+倍.*收益/,
-  /[\d.]+%.*转化率/,
-  // v2.7.2: 更多营销特征
-  /亲测.*(可靠|赚钱|副业|生意)/,
+  // v2.7.4: 精准化 - "X倍" 必须搭配赚钱/收益/爆款等词才算软文
+  /[\d.]+倍.*(收益|赚钱|收入|爆款|利润|回报)/,
+  /[\d.]+%.*(转化率|存活率|成功率|收益率)/,
+  // v2.7.2: 更多营销特征 - 精准化
+  // "亲测" 必须搭配赚钱/副业/兼职等词才算软文
+  /亲测.*(赚钱|副业|兼职|搞钱|月入|日入|收入|生意)/,
   /下班就能赚/,
   /可靠副业/,
   /副业小生意/,
-  /亲测可靠/,
   /月入\d+/,
   /日入\d+/,
   /赚钱.*副业/,
   /副业.*赚钱/,
+  // v2.7.4: 推荐类软文
+  /(推荐|安利).*(兼职|副业|赚钱|搞钱)/,
 ];
 
 // v2.7: 政务/公告类过滤
@@ -216,45 +219,74 @@ function extractDomain(url: string): string {
   }
 }
 
-// v2.7: Extract main domain (merge all subdomains)
+// v2.7.4: Explicit domain family mapping table
+// Only merge domains that are truly the same entity
+const DOMAIN_FAMILY_MAP: Record<string, string> = {
+  // sina family
+  "sina.com.cn": "sina",
+  "sina.cn": "sina",
+  "sina.com": "sina",
+  "weibo.cn": "sina",
+  "weibo.com": "sina",
+  "weibo.com.cn": "sina",
+  // toutiao family (zjurl.cn is NOT toutiao - it's a separate URL shortener)
+  "toutiao.com": "toutiao",
+  "toutiao.cn": "toutiao",
+  // sohu family
+  "sohu.com": "sohu",
+  "sohu.com.cn": "sohu",
+  "sohu.cn": "sohu",
+  // smzdm family
+  "smzdm.com": "smzdm",
+  // baidu family
+  "baidu.com": "baidu",
+  "baidu.cn": "baidu",
+  // qq family
+  "qq.com": "qq",
+  // 163 family
+  "163.com": "163",
+  // ifeng family
+  "ifeng.com": "ifeng",
+  // cctv/cntv family
+  "cctv.com": "cctv",
+  "cntv.cn": "cctv",
+  "cetv.cn": "cctv",
+  // people family
+  "people.com.cn": "people",
+  // xinhuanet family
+  "xinhuanet.com": "xinhuanet",
+  "news.cn": "xinhuanet",
+  // china family
+  "china.com.cn": "china",
+  // cnr family
+  "cnr.cn": "cnr",
+};
+
+// v2.7.4: Extract main domain with explicit mapping + fallback
 function extractMainDomain(url: string): string {
   const domain = extractDomain(url);
   if (!domain) return "";
   
-  // Special handling for known domain families
-  // sina family: sina.cn, sina.com.cn, sina.com, weibo.cn, etc.
-  if (/\b(sina|weibo)\.(cn|com|com\.cn|net)$/i.test(domain)) return "sina";
-  // toutiao family: toutiao.com, zjurl.cn, etc.
-  if (/\b(toutiao|zjurl)\.(com|cn)$/i.test(domain)) return "toutiao";
-  // sohu family: sohu.com, etc.
-  if (/\bsohu\.com$/i.test(domain)) return "sohu";
-  // smzdm family: smzdm.com, etc.
-  if (/\bsmzdm\.com$/i.test(domain)) return "smzdm";
-  // baidu family: baidu.com, etc.
-  if (/\bbaidu\.com$/i.test(domain)) return "baidu";
-  // qq family: qq.com, etc.
-  if (/\bqq\.com$/i.test(domain)) return "qq";
-  // 163 family: 163.com, etc.
-  if (/\b163\.com$/i.test(domain)) return "163";
-  // ifeng family: ifeng.com, etc.
-  if (/\bifeng\.com$/i.test(domain)) return "ifeng";
-  // cetv/cntv family
-  if (/\b(cctv|cntv|cetv)\.com$/i.test(domain)) return "cctv";
+  // Check explicit mapping first
+  if (DOMAIN_FAMILY_MAP[domain]) {
+    return DOMAIN_FAMILY_MAP[domain];
+  }
   
   // Handle common Chinese domains and special cases
   const parts = domain.split(".");
   if (parts.length <= 2) return domain;
   
-  // For domains like "m.toutiao.com", "k.sina.cn", return "toutiao.com", "sina.cn"
   // Special handling for common Chinese TLDs
   const chineseTlds = ["com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn"];
   for (const tld of chineseTlds) {
     if (domain.endsWith(tld)) {
+      // For "he.people.com.cn", return "people.com.cn"
       const baseParts = domain.slice(0, -tld.length - 1).split(".");
       return baseParts[baseParts.length - 1] + "." + tld;
     }
   }
-  // For regular domains like "m.toutiao.com", return "toutiao.com"
+  
+  // Default: take last two parts
   return parts.slice(-2).join(".");
 }
 
@@ -393,8 +425,14 @@ interface LLMAnalysisResult {
 
 // Extract key entities from title for embedding in angles
 function extractTitleEntities(title: string): { entities: string[]; numbers: string[] } {
-  // Extract numbers
-  const numbers = title.match(/\d+/g) || [];
+  // Extract numbers, but filter out years (4-digit numbers like 2024, 2025, 2026)
+  const allNumbers = title.match(/\d+/g) || [];
+  const numbers = allNumbers.filter(n => {
+    // Filter out years (1900-2099)
+    const num = parseInt(n, 10);
+    if (num >= 1900 && num <= 2099 && n.length === 4) return false;
+    return true;
+  });
   // Extract quoted terms
   const quoted = title.match(/[""「」【】]([^"」】]+)[""「」【】]/g) || [];
   // Extract capitalized terms (for English) or Chinese terms
@@ -412,32 +450,33 @@ function extractTitleEntities(title: string): { entities: string[]; numbers: str
 }
 
 // v2.7: 20+ angle patterns, randomly selected, embedded with title entities
+// v2.7.4: Patterns with number slots only use numbers if available, otherwise use text alternatives
 const ANGLE_PATTERNS: Array<(kw: string, ent: string[], num: string[]) => string> = [
-  (kw, ent, num) => `实测${ent[0] || kw}完整流程，记录${num[0] || "每个"}步骤的真实耗时和踩坑点`,
-  (kw, ent, num) => `拍一支"${ent[0] || kw}新手最容易搞错的${num[0] || "3"}个点"短视频`,
+  (kw, ent, num) => `实测${ent[0] || kw}完整流程，记录${num[0] ? num[0] + "个" : "每个"}步骤的真实耗时和踩坑点`,
+  (kw, ent, num) => `拍一支"${ent[0] || kw}新手最容易搞错的${num[0] ? num[0] + "个" : "几个"}点"短视频`,
   () => `对比官方说法和实际操作，找出那些没写清楚的隐藏细节`,
   (kw, ent) => `自费买了${ent[0] || "几款"}热门${kw}，逐个实测告诉你哪个值`,
   () => `做一期红黑榜，踩雷的和真香的都列出来`,
   () => `从价格/效果/体验三个维度横向对比，给出不同预算的选择`,
   (kw, ent) => `整理了近半年的数据，${ent[0] || kw}的变化比你想的大`,
-  (kw, ent, num) => `跟${num[0] || "3"}个从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
+  (kw, ent, num) => `跟${num[0] ? num[0] + "个" : "几位"}从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
   (kw) => `从政策/技术/市场三个层面分析${kw}的真实走向`,
   (kw, ent) => `围绕「${ent[0] || kw}」的最新动态，梳理事件关键争议点`,
   (kw) => `针对${kw}的常见误解，用实际数据或体验来澄清`,
-  (kw, ent, num) => `花${num[0] || "50"}块vs花${num[1] || "500"}块，${ent[0] || kw}差距到底在哪`,
-  (kw, ent, num) => `问了${num[0] || "10"}个朋友，他们对${ent[0] || kw}的回答让我意外`,
-  (kw, ent, num) => `我试了一周${ent[0] || kw}，踩了${num[0] || "3"}个坑`,
-  (kw, ent, num) => `${ent[0] || kw}的${num[0] || "5"}个真相，第${num[1] || "3"}个最让人意外`,
-  (kw, ent, num) => `${ent[0] || kw}翻车实录：我花了${num[0] || "几百"}块买的教训`,
+  (kw, ent, num) => `花${num[0] || "小几百"}块vs花${num[1] || "大几百"}块，${ent[0] || kw}差距到底在哪`,
+  (kw, ent, num) => `问了${num[0] ? num[0] + "个" : "几个"}朋友，他们对${ent[0] || kw}的回答让我意外`,
+  (kw, ent, num) => `我试了一周${ent[0] || kw}，踩了${num[0] ? num[0] + "个" : "几个"}坑`,
+  (kw, ent, num) => `${ent[0] || kw}的${num[0] ? num[0] + "个" : "几个"}真相，最让人意外的那个`,
+  (kw, ent, num) => `${ent[0] || kw}翻车实录：我花了${num[0] || "不少"}块买的教训`,
   (kw) => `为什么${kw}突然火了？我挖了挖背后的原因`,
-  (kw, ent, num) => `${ent[0] || kw}避坑指南：这${num[0] || "5"}个错误我替你踩过了`,
-  (kw, ent, num) => `${ent[0] || kw}深度体验报告：用了${num[0] || "一个月"}后的真实感受`,
+  (kw, ent, num) => `${ent[0] || kw}避坑指南：这${num[0] ? num[0] + "个" : "几个"}错误我替你踩过了`,
+  (kw, ent, num) => `${ent[0] || kw}深度体验报告：用了${num[0] ? num[0] + "天" : "一段时间"}后的真实感受`,
   (kw) => `${kw}新手入门：从零开始的完整指南`,
-  (kw, ent, num) => `对比了${num[0] || "5"}款${ent[0] || kw}，这款性价比最高`,
-  (kw, ent, num) => `${ent[0] || kw}使用${num[0] || "30"}天后，说说真实体验`,
+  (kw, ent, num) => `对比了${num[0] ? num[0] + "款" : "几款"}${ent[0] || kw}，这款性价比最高`,
+  (kw, ent, num) => `${ent[0] || kw}使用${num[0] ? num[0] + "天" : "一段时间"}后，说说真实体验`,
   (kw) => `${kw}怎么选？看完这篇就不纠结了`,
   (kw, ent) => `${ent[0] || kw}的隐藏用法，${kw}老手都不一定知道`,
-  (kw, ent, num) => `实测${num[0] || "5"}种${ent[0] || kw}方案，最便宜的反而最好用`,
+  (kw, ent, num) => `实测${num[0] ? num[0] + "种" : "几种"}${ent[0] || kw}方案，最便宜的反而最好用`,
 ];
 
 function generateFallbackAnalysis(title: string, keyword: string, heatScore: number): LLMAnalysisResult {
@@ -917,6 +956,47 @@ export async function POST(request: NextRequest) {
         matchedQueries: item.matchedQueries.length > 1 ? item.matchedQueries : undefined,
       };
     });
+
+    // v2.7.4: Final normalization dedup on the returned topics array
+    const finalSeenAngles = new Set<string>();
+    const finalSeenReasons = new Set<string>();
+    for (const topic of topics) {
+      // Deduplicate angles
+      const dedupedAngles: string[] = [];
+      for (const angle of topic.angles) {
+        const normalized = angle.replace(/[\s\d]/g, "").toLowerCase();
+        if (!finalSeenAngles.has(normalized)) {
+          dedupedAngles.push(angle);
+          finalSeenAngles.add(normalized);
+        }
+      }
+      // If all angles were duplicates, regenerate from fallback
+      if (dedupedAngles.length === 0) {
+        const fallback = generateFallbackAnalysis(topic.title, keyword, topic.heatScore);
+        for (const angle of fallback.angles) {
+          if (dedupedAngles.length >= 3) break;
+          const normalized = angle.replace(/[\s\d]/g, "").toLowerCase();
+          if (!finalSeenAngles.has(normalized)) {
+            dedupedAngles.push(angle);
+            finalSeenAngles.add(normalized);
+          }
+        }
+      }
+      topic.angles = dedupedAngles.slice(0, 3);
+      
+      // Deduplicate scoreReason
+      const normalizedReason = topic.scoreReason.replace(/[\s\d]/g, "").toLowerCase();
+      if (finalSeenReasons.has(normalizedReason)) {
+        const fallback = generateFallbackAnalysis(topic.title, keyword, topic.heatScore);
+        const newReason = fallback.scoreReason.replace(/[\s\d]/g, "").toLowerCase();
+        if (!finalSeenReasons.has(newReason)) {
+          topic.scoreReason = fallback.scoreReason;
+          finalSeenReasons.add(newReason);
+        }
+      } else {
+        finalSeenReasons.add(normalizedReason);
+      }
+    }
 
     const trendData = generateTrendData(resolvedTimeRange, allItems);
 

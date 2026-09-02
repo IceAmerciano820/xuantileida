@@ -149,7 +149,7 @@ async function fetchBoard(key: string, source: typeof HOT_SOURCES[keyof typeof H
       const data = await res.json() as Record<string, unknown>;
       const items = source.parse(data);
       if (items.length > 0) {
-        board.items = items.slice(0, 30); // Max 30 items per board
+        board.items = items; // Return all items from source
         return board;
       }
     } catch {
