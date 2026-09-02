@@ -338,7 +338,7 @@ function generateTrendData(timeRange: string, items: Array<{ heatScore: number; 
 
 /* ── v2.1: Structured LLM analysis (batched) ── */
 
-const ANALYSIS_BATCH_SIZE = 5;
+const ANALYSIS_BATCH_SIZE = 3; // v2.7.1: reduced from 5 to improve success rate
 
 interface LLMAnalysisResult {
   trendTag: TrendTag;
@@ -473,14 +473,19 @@ ${topicsDesc}
 - 所有输出用口语化表达，像真人在说话
 - 每条angles必须包含该热点的具体实体/事件/数字，不允许出现可套用到任何话题的空泛角度`;
 
-  try {
-    const response = await llmClient.invoke(
-      [
-        { role: "system", content: "你是资深内容策划专家，说人话，不说AI腔。严格输出JSON数组，不要输出markdown代码块标记，不要额外解释文字。确保JSON格式正确。所有文字用口语化表达，像真人在说话。" },
-        { role: "user", content: prompt },
-      ],
-      { model: "doubao-seed-2-0-mini-260215", temperature: 0.7 }
-    );
+  // v2.7.1: Add retry logic for LLM calls
+  const MAX_RETRIES = 2;
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await llmClient.invoke(
+        [
+          { role: "system", content: "你是资深内容策划专家，说人话，不说AI腔。严格输出JSON数组，不要输出markdown代码块标记，不要额外解释文字。确保JSON格式正确。所有文字用口语化表达，像真人在说话。" },
+          { role: "user", content: prompt },
+        ],
+        { model: "doubao-seed-2-0-mini-260215", temperature: 0.7 }
+      );
 
     let content = response.content.trim();
     // Remove markdown code block wrappers if present
@@ -495,7 +500,7 @@ ${topicsDesc}
       try {
         const parsed = JSON.parse(jsonStr);
         if (Array.isArray(parsed)) {
-          return parsed.map((item: Record<string, unknown>): LLMAnalysisResult => {
+          const results = parsed.map((item: Record<string, unknown>): LLMAnalysisResult => {
             const validTrendTags: TrendTag[] = ["暴涨", "平稳", "降温", "潜力黑马"];
             const validRiskLevels: RiskLevel[] = ["低", "中", "高"];
             const rawRelatedWords = Array.isArray(item.relatedWords)
@@ -516,16 +521,28 @@ ${topicsDesc}
               riskLevel: validRiskLevels.includes(item.riskLevel as RiskLevel) ? (item.riskLevel as RiskLevel) : "低",
             };
           });
+          return results; // Success, return results
         }
       } catch {
-        // JSON still invalid, fall through to fallback
+        // JSON still invalid, fall through to retry or fallback
       }
     }
+    // If we parsed successfully, results would have been returned above
+    // Fall through to retry
   } catch (error) {
-    console.error("LLM analysis failed for batch:", error);
+    lastError = error as Error;
+    console.error(`LLM analysis attempt ${attempt + 1} failed:`, error);
+    if (attempt < MAX_RETRIES - 1) {
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
   }
 
   // Fallback
+  if (lastError) {
+    console.error("LLM analysis failed after retries:", lastError);
+  }
   return topics.map((t) => generateFallbackAnalysis(t.title, keyword, t.heatScore));
 }
 
@@ -787,14 +804,18 @@ export async function POST(request: NextRequest) {
       return b.heatScore - a.heatScore;
     });
 
-    // v2.6: 同域名去重（每域名最多3条），营销内容降级但不丢弃
-    const nonPromoItems = allItems.filter((it) => !it.isPromotional);
-    const promoItems = allItems.filter((it) => it.isPromotional);
-    const dedupedNonPromo = deduplicateByDomain(nonPromoItems);
-    // 营销内容只保留前2条作为补充
-    const dedupedPromo = promoItems.slice(0, 2);
-    const combinedItems = [...dedupedNonPromo, ...dedupedPromo];
-    const topItems = combinedItems.slice(0, maxCount);
+    // v2.7.1: 硬过滤 - 营销内容和政务内容直接移除，不从结果中返回
+    const filteredItems = allItems.filter((it) => {
+      // 移除营销软文
+      if (it.isPromotional) return false;
+      // 移除政务/公告类
+      if (isGovernmentContent(it.title, it.snippet)) return false;
+      return true;
+    });
+
+    // v2.7.1: 同主域名去重（每主域名最多3条），直接从数组移除超限条目
+    const dedupedItems = deduplicateByDomain(filteredItems);
+    const topItems = dedupedItems.slice(0, maxCount);
 
     if (topItems.length === 0) {
       const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
@@ -846,7 +867,7 @@ export async function POST(request: NextRequest) {
         trendTag: analysis.trendTag,
         score: analysis.score,
         scoreReason: analysis.scoreReason,
-        angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
+        angles: analysis.angles.length > 0 ? analysis.angles : generateFallbackAnalysis(item.title, trimmedKeyword, item.heatScore).angles,
         relatedWords: analysis.relatedWords,
         riskLevel: analysis.riskLevel,
         isPromotional: item.isPromotional,
@@ -948,7 +969,7 @@ function handleSSEStream(
             trendTag: analysis.trendTag,
             score: analysis.score,
             scoreReason: analysis.scoreReason,
-            angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
+            angles: analysis.angles.length > 0 ? analysis.angles : generateFallbackAnalysis(item.title, keyword, item.heatScore).angles,
             relatedWords: analysis.relatedWords,
             riskLevel: analysis.riskLevel,
             isPromotional: item.isPromotional,
@@ -1008,7 +1029,7 @@ function handleSSEStream(
               trendTag: analysis.trendTag,
               score: analysis.score,
               scoreReason: analysis.scoreReason,
-              angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
+              angles: analysis.angles.length > 0 ? analysis.angles : generateFallbackAnalysis(item.title, keyword, item.heatScore).angles,
               relatedWords: analysis.relatedWords,
               riskLevel: analysis.riskLevel,
               isPromotional: item.isPromotional,
