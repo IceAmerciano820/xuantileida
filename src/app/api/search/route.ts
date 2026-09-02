@@ -132,6 +132,9 @@ const PROMO_SIGNALS = [
   "十大.*app", "十大.*平台", "一天.*元", "倍爆款率", "%存活率",
   "月入.*万", "日入.*元", "躺赚", "零成本创业",
   "保姆级教程", "建议收藏", "必看", "不容错过",
+  // v2.7: 更多营销特征
+  "亲测.*月入", "接单赚钱", "副业.*日入", "爆款率.*%",
+  "存活率.*%", "转化率.*%", "收益.*倍",
 ];
 
 const PROMO_PATTERNS = [
@@ -141,7 +144,39 @@ const PROMO_PATTERNS = [
   /[\d.]+%存活率/,
   /月入[\d.]+万/,
   /日入[\d.]+元/,
+  // v2.7: 更多营销模式
+  /亲测.*月入[\d.]+/,
+  /接单赚钱/,
+  /副业.*日入[\d.]+/,
+  /[\d.]+倍.*收益/,
+  /[\d.]+%.*转化率/,
 ];
+
+// v2.7: 政务/公告类过滤
+const GOV_PATTERNS = [
+  /开展.*讲座/,
+  /召开.*会议/,
+  /关于.*的通知/,
+  /关于.*的公告/,
+  /开园/,
+  /总决赛开赛/,
+  /启动仪式/,
+  /签约仪式/,
+  /新闻发布会/,
+  /政策.*解读/,
+  /条例.*实施/,
+];
+
+function isGovernmentContent(title: string, snippet: string): boolean {
+  const text = title + " " + snippet;
+  // Check if it matches government patterns
+  const matchesGov = GOV_PATTERNS.some((pattern) => pattern.test(text));
+  if (!matchesGov) return false;
+  // Check if it has mass discussion points (social media engagement indicators)
+  const hasDiscussionPoints = /评论|讨论|网友|热议|争议|吐槽|点赞|转发|收藏/.test(text);
+  // If it matches gov patterns but has no discussion points, filter it out
+  return !hasDiscussionPoints;
+}
 
 function detectPromotional(title: string, snippet: string): boolean {
   const text = (title + " " + snippet).toLowerCase();
@@ -152,7 +187,7 @@ function detectPromotional(title: string, snippet: string): boolean {
   return false;
 }
 
-/* ── v2.6: Domain extraction + domain-based dedup ── */
+/* ── v2.7: Main domain extraction for dedup ── */
 
 function extractDomain(url: string): string {
   try {
@@ -163,22 +198,42 @@ function extractDomain(url: string): string {
   }
 }
 
-// v2.6: 同域名最多保留 MAX_PER_DOMAIN 条
+// v2.7: Extract main domain (merge all subdomains)
+function extractMainDomain(url: string): string {
+  const domain = extractDomain(url);
+  if (!domain) return "";
+  // Handle common Chinese domains and special cases
+  const parts = domain.split(".");
+  if (parts.length <= 2) return domain;
+  // For domains like "m.toutiao.com", "k.sina.cn", return "toutiao.com", "sina.cn"
+  // Special handling for common Chinese TLDs
+  const chineseTlds = ["com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn"];
+  for (const tld of chineseTlds) {
+    if (domain.endsWith(tld)) {
+      const baseParts = domain.slice(0, -tld.length - 1).split(".");
+      return baseParts[baseParts.length - 1] + "." + tld;
+    }
+  }
+  // For regular domains like "m.toutiao.com", return "toutiao.com"
+  return parts.slice(-2).join(".");
+}
+
+// v2.7: 同主域名最多保留 MAX_PER_DOMAIN 条
 const MAX_PER_DOMAIN = 3;
 
 function deduplicateByDomain<T extends { url: string }>(items: T[]): T[] {
   const domainCount = new Map<string, number>();
   const result: T[] = [];
   for (const item of items) {
-    const domain = extractDomain(item.url);
-    if (!domain) {
+    const mainDomain = extractMainDomain(item.url);
+    if (!mainDomain) {
       result.push(item);
       continue;
     }
-    const count = domainCount.get(domain) || 0;
+    const count = domainCount.get(mainDomain) || 0;
     if (count < MAX_PER_DOMAIN) {
       result.push(item);
-      domainCount.set(domain, count + 1);
+      domainCount.set(mainDomain, count + 1);
     }
   }
   return result;
@@ -294,48 +349,81 @@ interface LLMAnalysisResult {
   riskLevel: RiskLevel;
 }
 
+/* ── v2.7: Expanded fallback angle library (20+ patterns) ── */
+
+// Extract key entities from title for embedding in angles
+function extractTitleEntities(title: string): { entities: string[]; numbers: string[] } {
+  // Extract numbers
+  const numbers = title.match(/\d+/g) || [];
+  // Extract quoted terms
+  const quoted = title.match(/[""「」【】]([^"」】]+)[""「」【】]/g) || [];
+  // Extract capitalized terms (for English) or Chinese terms
+  const entities: string[] = [];
+  // Add quoted terms
+  for (const q of quoted) {
+    entities.push(q.replace(/[""「」【】]/g, ""));
+  }
+  // Add product/brand names (common patterns)
+  const brandPatterns = title.match(/[\u4e00-\u9fa5]{2,6}(APP|平台|工具|软件|服务|品牌)/g) || [];
+  for (const b of brandPatterns) {
+    entities.push(b);
+  }
+  return { entities, numbers };
+}
+
+// v2.7: 20+ angle patterns, randomly selected, embedded with title entities
+const ANGLE_PATTERNS: Array<(kw: string, ent: string[], num: string[]) => string> = [
+  (kw, ent, num) => `实测${ent[0] || kw}完整流程，记录${num[0] || "每个"}步骤的真实耗时和踩坑点`,
+  (kw, ent, num) => `拍一支"${ent[0] || kw}新手最容易搞错的${num[0] || "3"}个点"短视频`,
+  () => `对比官方说法和实际操作，找出那些没写清楚的隐藏细节`,
+  (kw, ent) => `自费买了${ent[0] || "几款"}热门${kw}，逐个实测告诉你哪个值`,
+  () => `做一期红黑榜，踩雷的和真香的都列出来`,
+  () => `从价格/效果/体验三个维度横向对比，给出不同预算的选择`,
+  (kw, ent) => `整理了近半年的数据，${ent[0] || kw}的变化比你想的大`,
+  (kw, ent, num) => `跟${num[0] || "3"}个从业者聊了聊，他们对${ent[0] || kw}的看法不太一样`,
+  (kw) => `从政策/技术/市场三个层面分析${kw}的真实走向`,
+  (kw, ent) => `围绕「${ent[0] || kw}」的最新动态，梳理事件来龙去脉和关键争议点`,
+  (kw, ent, num) => `找${num[0] || "3-5"}个真实用户案例，讲讲他们使用${ent[0] || kw}前后的变化`,
+  (kw) => `针对${kw}的常见误解，用实际数据或体验来澄清`,
+  (kw, ent, num) => `花${num[0] || "50"}块vs花${num[1] || "500"}块，${ent[0] || kw}差距到底在哪`,
+  (kw, ent, num) => `问了${num[0] || "10"}个朋友，他们对${ent[0] || kw}的回答让我意外`,
+  (kw, ent, num) => `我试了一周${ent[0] || kw}，踩了${num[0] || "3"}个坑`,
+  (kw, ent, num) => `${ent[0] || kw}的${num[0] || "5"}个真相，第${num[1] || "3"}个最让人意外`,
+  (kw, ent, num) => `${ent[0] || kw}翻车实录：我花了${num[0] || "几百"}块买的教训`,
+  (kw) => `为什么${kw}突然火了？我挖了挖背后的原因`,
+  (kw, ent, num) => `${ent[0] || kw}避坑指南：这${num[0] || "5"}个错误我替你踩过了`,
+  (kw, ent, num) => `${ent[0] || kw}深度体验报告：用了${num[0] || "一个月"}后的真实感受`,
+  (kw) => `${kw}新手入门：从零开始的完整指南`,
+  (kw, ent, num) => `对比了${num[0] || "5"}款${ent[0] || kw}，这款性价比最高`,
+  (kw, ent, num) => `${ent[0] || kw}使用${num[0] || "30"}天后，说说真实体验`,
+  (kw) => `${kw}怎么选？看完这篇就不纠结了`,
+];
+
 function generateFallbackAnalysis(title: string, keyword: string, heatScore: number): LLMAnalysisResult {
-  const lowerTitle = title.toLowerCase();
+  const { entities, numbers } = extractTitleEntities(title);
+  
   let trendTag: TrendTag = "平稳";
   if (heatScore >= 75) trendTag = "暴涨";
   else if (heatScore >= 55 && heatScore < 75) trendTag = "潜力黑马";
   else if (heatScore < 30) trendTag = "降温";
 
-  // v2.6: 更具体的角度，避免万能句式
-  let angles: string[];
-  if (lowerTitle.includes("教程") || lowerTitle.includes("如何") || lowerTitle.includes("怎么")) {
-    angles = [
-      `实测${keyword}完整流程，记录每个步骤的真实耗时和踩坑点`,
-      `拍一支"${keyword}新手最容易搞错的3个点"短视频`,
-      `对比官方教程和实际操作，找出那些没写清楚的隐藏步骤`,
-    ];
-  } else if (lowerTitle.includes("排行") || lowerTitle.includes("推荐") || lowerTitle.includes("测评")) {
-    angles = [
-      `自费买了5款热门${keyword}，逐个实测告诉你哪个值`,
-      `做一期红黑榜，踩雷的和真香的都列出来`,
-      `从价格/效果/售后三个维度横向对比，给出不同预算的选择`,
-    ];
-  } else if (lowerTitle.includes("趋势") || lowerTitle.includes("未来") || lowerTitle.includes("预测")) {
-    angles = [
-      `整理了近半年的数据，${keyword}的变化比你想的大`,
-      `跟3个从业者聊了聊，他们对${keyword}的看法不太一样`,
-      `从政策/技术/市场三个层面分析${keyword}的真实走向`,
-    ];
-  } else {
-    // v2.6: 避免"从一个普通用户的角度"这类万能句式
-    angles = [
-      `围绕「${keyword}」的最新动态，梳理事件来龙去脉和关键争议点`,
-      `找3-5个真实用户案例，讲讲他们使用${keyword}前后的变化`,
-      `针对${keyword}的常见误解，用实际数据或体验来澄清`,
-    ];
-  }
+  // v2.7: Randomly select 3 unique angle patterns
+  const shuffled = [...ANGLE_PATTERNS].sort(() => Math.random() - 0.5);
+  const angles = shuffled.slice(0, 3).map((pattern) => pattern(keyword, entities, numbers));
 
-  const relatedWords = [
+  // v2.7: Ensure relatedWords >= 5
+  const baseRelatedWords = [
     `${keyword}实测`, `${keyword}避坑`, `${keyword}怎么选`,
     `${keyword}真实体验`, `${keyword}对比`, `${keyword}推荐`,
-  ].slice(0, 6);
+    `${keyword}教程`, `${keyword}攻略`, `${keyword}评测`,
+  ];
+  // Add entity-based related words if available
+  if (entities.length > 0) {
+    baseRelatedWords.push(`${entities[0]}评测`, `${entities[0]}怎么样`);
+  }
+  const relatedWords = baseRelatedWords.slice(0, 7);
 
-  // v2.6: 更具体的评分理由，避免万能空话
+  // v2.7: More specific scoreReason, avoid generic phrases
   const scoreReason = heatScore >= 70
     ? `近期讨论集中，有多个具体事件/产品可切入，适合做深度内容`
     : heatScore >= 50
@@ -501,6 +589,65 @@ async function analyzeAllTopics(
     }
   }
 
+  // v2.7: Post-processing - deduplicate angles and scoreReason across batch
+  const seenAngles = new Set<string>();
+  const seenReasons = new Set<string>();
+  
+  for (let i = 0; i < allResults.length; i++) {
+    const result = allResults[i];
+    if (!result) continue;
+    
+    // Normalize and check for duplicate angles
+    const normalizedAngles = result.angles.map((a) => 
+      a.replace(/[\s\d]/g, "").toLowerCase()
+    );
+    
+    const uniqueAngles: string[] = [];
+    for (let j = 0; j < result.angles.length; j++) {
+      const normalized = normalizedAngles[j];
+      // Check if this angle is too similar to any seen angle
+      const isDuplicate = Array.from(seenAngles).some((seen) => {
+        // Simple similarity: if 80% of characters match
+        const commonChars = normalized.split("").filter((c) => seen.includes(c)).length;
+        return commonChars / Math.max(normalized.length, seen.length) > 0.8;
+      });
+      
+      if (!isDuplicate || uniqueAngles.length < 2) {
+        uniqueAngles.push(result.angles[j]);
+        seenAngles.add(normalized);
+      }
+    }
+    
+    // If we lost angles due to dedup, regenerate from fallback
+    if (uniqueAngles.length < 3) {
+      const fallback = generateFallbackAnalysis(topics[i].title, keyword, topics[i].heatScore);
+      for (const angle of fallback.angles) {
+        if (uniqueAngles.length >= 3) break;
+        const normalized = angle.replace(/[\s\d]/g, "").toLowerCase();
+        if (!seenAngles.has(normalized)) {
+          uniqueAngles.push(angle);
+          seenAngles.add(normalized);
+        }
+      }
+    }
+    result.angles = uniqueAngles.slice(0, 3);
+    
+    // Deduplicate scoreReason
+    const normalizedReason = result.scoreReason.replace(/[\s\d]/g, "").toLowerCase();
+    if (seenReasons.has(normalizedReason)) {
+      // Regenerate with fallback
+      const fallback = generateFallbackAnalysis(topics[i].title, keyword, topics[i].heatScore);
+      result.scoreReason = fallback.scoreReason;
+    }
+    seenReasons.add(normalizedReason);
+    
+    // v2.7: Ensure relatedWords >= 5
+    if (result.relatedWords.length < 5) {
+      const fallback = generateFallbackAnalysis(topics[i].title, keyword, topics[i].heatScore);
+      result.relatedWords = [...new Set([...result.relatedWords, ...fallback.relatedWords])].slice(0, 7);
+    }
+  }
+
   return allResults;
 }
 
@@ -524,12 +671,20 @@ export async function POST(request: NextRequest) {
     const searchConfig = new SearchConfig();
     const searchClient = new SearchClient(searchConfig, customHeaders);
 
+    // v2.7: Add social media sources with site-specific searches
     const searchQueries = [
       `${trimmedKeyword} 热点 热门话题 最新`,
       `${trimmedKeyword} 微博 知乎 讨论`,
       `${trimmedKeyword} 抖音 小红书 爆款`,
       `${trimmedKeyword} 体验 测评 分享`,
       `${trimmedKeyword} 教程 攻略 技巧`,
+    ];
+
+    // v2.7: Social media site-specific searches
+    const socialMediaSites = [
+      "weibo.com,zhihu.com",  // 微博+知乎
+      "douyin.com,xiaohongshu.com",  // 抖音+小红书
+      "bilibili.com",  // B站
     ];
 
     const searchPromises = searchQueries.map((query, idx) =>
@@ -543,7 +698,21 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    const results = await Promise.all(searchPromises);
+    // v2.7: Add social media site-specific searches
+    const socialMediaPromises = socialMediaSites.map((sites, idx) =>
+      searchClient.advancedSearch(trimmedKeyword, {
+        timeRange: resolvedTimeRange,
+        count: 15,
+        sites: sites,
+        needSummary: false,
+      }).catch((err: unknown) => {
+        console.error(`Social media search failed for sites ${idx}:`, err);
+        return { web_items: [] };
+      })
+    );
+
+    const allSearchPromises = [...searchPromises, ...socialMediaPromises];
+    const results = await Promise.all(allSearchPromises);
 
     // Dedup by URL, track matched queries
     const seenUrls = new Set<string>();
@@ -558,6 +727,11 @@ export async function POST(request: NextRequest) {
       const result = results[qi];
       if (!result.web_items) continue;
 
+      // v2.7: Track which query this result came from
+      const queryLabel = qi < searchQueries.length 
+        ? searchQueries[qi] 
+        : `社媒[${socialMediaSites[qi - searchQueries.length]}]`;
+
       for (const item of result.web_items) {
         const normalizedTitle = (item.title || "").trim();
         if (!normalizedTitle) continue;
@@ -569,8 +743,8 @@ export async function POST(request: NextRequest) {
           const existing = allItems.find(
             (it) => (it.url.split("?")[0].split("#")[0] || it.title) === dedupKey
           );
-          if (existing && !existing.matchedQueries.includes(searchQueries[qi])) {
-            existing.matchedQueries.push(searchQueries[qi]);
+          if (existing && !existing.matchedQueries.includes(queryLabel)) {
+            existing.matchedQueries.push(queryLabel);
           }
           continue;
         }
@@ -584,6 +758,9 @@ export async function POST(request: NextRequest) {
           keywordLower.split("").some((char: string) => titleLower.includes(char));
         if (!isRelevant && keywordLower.length > 1) continue;
         if (isBlacklisted(itemUrl)) continue;
+
+        // v2.7: 政务/公告类内容硬过滤
+        if (isGovernmentContent(normalizedTitle, cleanedSnippet)) continue;
 
         const rawPublishTime = item.publish_time || "";
         if (rawPublishTime && !isWithinTimeRange(rawPublishTime, resolvedTimeRange)) continue;
@@ -599,7 +776,7 @@ export async function POST(request: NextRequest) {
           title: normalizedTitle, source: platform, url: itemUrl,
           snippet: cleanedSnippet, heatScore, heatLevel: getHeatLevel(heatScore),
           publishTime: rawPublishTime || "今日",
-          isPromotional: isPromo, matchedQueries: [searchQueries[qi]],
+          isPromotional: isPromo, matchedQueries: [queryLabel],
         });
       }
     }
