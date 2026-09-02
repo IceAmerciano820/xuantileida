@@ -16,6 +16,7 @@ import { RadarLandingPage } from "@/components/radar-landing-page";
 import { MonitorKeywordsModal } from "@/components/monitor-keywords-modal";
 import { DailyBriefing } from "@/components/daily-briefing";
 import { PWARegistrar } from "@/components/pwa-registrar";
+import { BatchGenerateModal } from "@/components/batch-generate-modal";
 
 export type FavoriteStatus = "draft" | "scheduled" | "published";
 export type TrendTag = "暴涨" | "平稳" | "降温" | "潜力黑马";
@@ -43,6 +44,21 @@ export interface TopicAngle {
   scheduledDate?: string;
   note?: string;
   customTags?: string[];
+  generatedContent?: GeneratedContentSet;
+}
+
+export interface GeneratedContentItem {
+  platform: "xiaohongshu" | "douyin" | "wechat";
+  title: string;
+  titleCandidates?: string[];
+  body: string;
+  tags?: string[];
+  generatedAt: string;
+}
+
+export interface GeneratedContentSet {
+  items: GeneratedContentItem[];
+  generatedAt: string;
 }
 
 interface TrendDataPoint {
@@ -80,7 +96,7 @@ const DONE_TOPICS_KEY = "hotspot_done_topics";
 const MAX_HISTORY = 10;
 const REQUEST_COUNT = 30;
 const CACHE_TTL = 5 * 60 * 1000;
-const APP_VERSION = "v2.4.0";
+const APP_VERSION = "v2.5.0";
 const FIRST_SCREEN_TIMEOUT_MS = 30000;
 const FULL_TIMEOUT_MS = 60000;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -150,6 +166,9 @@ function InnerApp() {
   const [monitoredKeywords, setMonitoredKeywords] = useState<string[]>([]);
   const [showMonitorModal, setShowMonitorModal] = useState(false);
   const [showBriefing] = useState(true);
+  // v2.5: Batch generation
+  const [selectedTopicKeys, setSelectedTopicKeys] = useState<Set<string>>(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
   // v2.2: Landing page state
   const [showLanding, setShowLanding] = useState(false);
 
@@ -172,6 +191,34 @@ function InnerApp() {
   const handleSaveMonitorKeywords = useCallback((keywords: string[]) => {
     setMonitoredKeywords(keywords);
     saveToStorage("hotspot_monitored_keywords", keywords);
+  }, []);
+
+  // v2.5: Toggle topic selection for batch generation
+  const handleToggleSelect = useCallback((key: string) => {
+    setSelectedTopicKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        if (next.size >= 3) return prev; // Max 3
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  // v2.5: Save generated content to favorite
+  const handleSaveGeneratedContent = useCallback((topicKey: string, content: import("./page").GeneratedContentSet) => {
+    setFavorites((prev) => {
+      const next = prev.map((f) => {
+        if ((f.url || f.id) === topicKey) {
+          return { ...f, generatedContent: content };
+        }
+        return f;
+      });
+      saveToStorage(FAVORITES_KEY, next);
+      return next;
+    });
   }, []);
 
   // Load from localStorage with P0-2 migration (dedup by URL)
@@ -1256,10 +1303,12 @@ function InnerApp() {
                   index={index}
                   isFavorited={isFavorited(topic)}
                   isDone={doneTopics.has(topic.url || topic.id)}
+                  isSelected={selectedTopicKeys.has(topic.url || topic.id)}
                   onToggleFavorite={handleToggleFavorite}
                   onGenerate={setGenerateTarget}
                   onIgnore={handleIgnoreTopic}
                   onMarkDone={handleMarkDone}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </div>
@@ -1346,6 +1395,44 @@ function InnerApp() {
         keywords={monitoredKeywords}
         onSave={handleSaveMonitorKeywords}
       />
+
+      {/* v2.5: Floating batch action bar */}
+      {selectedTopicKeys.size > 0 && hasResults && (
+        <div className={`fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-xl border px-4 py-2.5 shadow-2xl backdrop-blur-xl ${
+          isDark
+            ? "border-[rgba(0,198,237,0.2)] bg-[rgba(22,27,45,0.95)] shadow-[#00C6ED]/10"
+            : "border-[#00B4D8]/20 bg-white/95 shadow-gray-200"
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+              已选 {selectedTopicKeys.size} 条
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowBatchModal(true)}
+              className="rounded-lg bg-gradient-to-r from-[#00C6ED] to-[#0091FF] px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-[#00C6ED]/20 transition-all hover:shadow-xl"
+            >
+              生成三平台内容包
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTopicKeys(new Set())}
+              className={`rounded-lg px-2 py-1.5 text-xs transition-colors ${isDark ? "text-[#8B92A8] hover:text-white" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* v2.5: Batch generate modal */}
+      <BatchGenerateModal
+        open={showBatchModal}
+        onClose={() => { setShowBatchModal(false); setSelectedTopicKeys(new Set()); }}
+        topics={results?.topics.filter((t: TopicAngle) => selectedTopicKeys.has(t.url || t.id)) || []}
+        onSaveToFavorite={handleSaveGeneratedContent}
+      />
+
       <PWARegistrar />
     </div>
     </>

@@ -81,6 +81,12 @@
   - `src/components/radar-landing-page.tsx` - 雷达着陆页（全屏雷达扫描动画，首次访问展示，sessionStorage控制）
   - `src/components/daily-briefing.tsx` - 每日选题简报组件（自动扫描监控关键词、进度展示、日期切换回看）
   - `src/components/monitor-keywords-modal.tsx` - 监控关键词管理弹窗（增删关键词、最多5个）
+  - `src/components/batch-generate-modal.tsx` - 批量内容生成弹窗（多选热点、三平台并行生成、进度展示、结果复制）
+  - `src/components/pwa-registrar.tsx` - PWA Service Worker 注册组件
+  - `src/components/landing-view.tsx` - 首屏默认视图（今日热点速览 + 赛道探索卡片，自动加载热点预览）
+  - `src/components/radar-landing-page.tsx` - 雷达着陆页（全屏雷达扫描动画，首次访问展示，sessionStorage控制）
+  - `src/components/daily-briefing.tsx` - 每日选题简报组件（自动扫描监控关键词、进度展示、日期切换回看）
+  - `src/components/monitor-keywords-modal.tsx` - 监控关键词管理弹窗（增删关键词、最多5个）
   - `src/components/pwa-registrar.tsx` - PWA Service Worker 注册组件
   - `src/components/search-input.tsx` - 搜索输入框组件
   - `src/components/result-card.tsx` - 热点结果卡片组件

@@ -18,6 +18,7 @@ interface FavoritesModalProps {
 }
 
 type ModalTab = "list" | "calendar";
+type StatusFilter = "all" | FavoriteStatus;
 
 const STATUS_CONFIG: Record<FavoriteStatus, { label: string; color: string; bg: string; dot: string }> = {
   draft: { label: "待构思", color: "#94A3B8", bg: "rgba(148,163,184,0.12)", dot: "#94A3B8" },
@@ -92,6 +93,7 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
   const [editingTagsKey, setEditingTagsKey] = useState<string | null>(null);
   const [tagDraft, setTagDraft] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const favKey = useCallback((t: TopicAngle) => t.url || t.id, []);
 
@@ -99,6 +101,19 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
   const getStatus = useCallback((t: TopicAngle): FavoriteStatus => {
     return t.status || "draft";
   }, []);
+
+  // Status counts
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusFilter, number> = { all: favorites.length, draft: 0, scheduled: 0, published: 0 };
+    favorites.forEach((f) => { counts[getStatus(f)]++; });
+    return counts;
+  }, [favorites, getStatus]);
+
+  // Filtered favorites by status
+  const filteredFavorites = useMemo(() => {
+    if (statusFilter === "all") return favorites;
+    return favorites.filter((f) => getStatus(f) === statusFilter);
+  }, [favorites, statusFilter, getStatus]);
 
   // Cycle status: draft → scheduled → published → draft
   const cycleStatus = useCallback((t: TopicAngle) => {
@@ -138,7 +153,8 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
       const escapeCSV = (s: string) => `"${s.replace(/"/g, '""')}"`;
       return [t.title, t.source, String(t.heatScore), t.publishTime, STATUS_CONFIG[getStatus(t)].label, t.scheduledDate || "", t.url, ...angles].map(escapeCSV).join(",");
     }).join("\n");
-    return header + rows;
+    // UTF-8 BOM for Excel compatibility
+    return "\uFEFF" + header + rows;
   }, [favorites, getStatus]);
 
   const buildJSON = useCallback(() => {
@@ -233,6 +249,64 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
     }
 
     downloadFile(lines.join("\n"), `本周选题计划_${weekStart}_${weekEnd}.md`, "text/markdown");
+    setShowExportMenu(false);
+  }, [favorites, getStatus, weekOffset]);
+
+  // v2.5: Export weekly plan as CSV (with UTF-8 BOM)
+  const handleExportWeeklyPlanCSV = useCallback((includeUnscheduled: boolean) => {
+    const today = new Date();
+    today.setDate(today.getDate() + weekOffset * 7);
+    const weekDates = getWeekDates(today);
+    const weekStart = formatDate(weekDates[0]);
+    const weekEnd = formatDate(weekDates[6]);
+
+    const escapeCSV = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const header = "计划日期,状态,标题,赛道,来源平台,评分,创作角度,笔记\n";
+
+    // Items scheduled this week
+    const scheduledItems = favorites.filter(f => {
+      if (!f.scheduledDate) return false;
+      return f.scheduledDate >= weekStart && f.scheduledDate <= weekEnd;
+    });
+
+    const rows: string[] = [];
+    scheduledItems.forEach((t) => {
+      const status = getStatus(t);
+      const angles = t.angles.join("；");
+      rows.push([
+        t.scheduledDate || "",
+        STATUS_CONFIG[status].label,
+        t.title,
+        t.source,
+        t.source,
+        String(t.score || t.heatScore),
+        angles,
+        t.note || "",
+      ].map(escapeCSV).join(","));
+    });
+
+    // Optionally include unscheduled draft items
+    if (includeUnscheduled) {
+      const unscheduled = favorites.filter(f => !f.scheduledDate && getStatus(f) === "draft");
+      unscheduled.forEach((t) => {
+        const status = getStatus(t);
+        const angles = t.angles.join("；");
+        rows.push([
+          "未排期",
+          STATUS_CONFIG[status].label,
+          t.title,
+          t.source,
+          t.source,
+          String(t.score || t.heatScore),
+          angles,
+          t.note || "",
+        ].map(escapeCSV).join(","));
+      });
+    }
+
+    // UTF-8 BOM for Excel compatibility
+    const csv = "\uFEFF" + header + rows.join("\n");
+    downloadFile(csv, `本周选题计划_${weekStart}_${weekEnd}.csv`, "text/csv");
     setShowExportMenu(false);
   }, [favorites, getStatus, weekOffset]);
 
@@ -347,7 +421,11 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
                   }`}>
                     <button type="button" onClick={handleExportWeeklyPlan} className={`flex w-full items-center px-3 py-2 text-left text-xs transition-colors ${isDark ? "text-[#10B981] hover:bg-[rgba(148,163,184,0.06)]" : "text-emerald-600 hover:bg-gray-50"}`}>
                       <svg className="mr-2 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                      导出本周选题计划
+                      导出本周计划 (MD)
+                    </button>
+                    <button type="button" onClick={() => handleExportWeeklyPlanCSV(true)} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#10B981] hover:bg-[rgba(148,163,184,0.06)]" : "border-gray-100 text-emerald-600 hover:bg-gray-50"}`}>
+                      <svg className="mr-2 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a2.25 2.25 0 0 1-2.25-2.25M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.75 0v-1.5c0-.621-.504-1.125-1.125-1.125M3.375 5.625h17.25c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-7.5c-.621 0-1.125.504-1.125 1.125v1.5" /></svg>
+                      导出本周计划 (CSV)
                     </button>
                     <button type="button" onClick={handleExportMarkdown} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#94A3B8] hover:bg-[rgba(148,163,184,0.06)] hover:text-[#F1F5F9]" : "border-gray-100 text-[#64748B] hover:bg-gray-50"}`}>导出 Markdown</button>
                     <button type="button" onClick={handleExportCSV} className={`flex w-full items-center border-t px-3 py-2 text-left text-xs transition-colors ${isDark ? "border-[rgba(148,163,184,0.06)] text-[#94A3B8] hover:bg-[rgba(148,163,184,0.06)] hover:text-[#F1F5F9]" : "border-gray-100 text-[#64748B] hover:bg-gray-50"}`}>导出 CSV</button>
@@ -402,8 +480,31 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
             </div>
           ) : activeTab === "list" ? (
             /* ── List Tab ── */
-            <div className="divide-y divide-[rgba(0,212,255,0.06)]">
-              {favorites.map((topic) => {
+            <div>
+              {/* Status filter tabs */}
+              <div className={`flex gap-1 border-b px-5 py-2 ${isDark ? "border-[rgba(148,163,184,0.08)]" : "border-[rgba(0,0,0,0.06)]"}`}>
+                {([
+                  { value: "all" as const, label: "全部" },
+                  { value: "draft" as const, label: "待构思" },
+                  { value: "scheduled" as const, label: "撰写中" },
+                  { value: "published" as const, label: "已发布" },
+                ]).map((sf) => (
+                  <button key={sf.value} type="button" onClick={() => setStatusFilter(sf.value)} className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                    statusFilter === sf.value
+                      ? (isDark ? "bg-[#00C6ED]/15 text-[#00C6ED]" : "bg-[#00B4D8]/10 text-[#00B4D8]")
+                      : (isDark ? "text-[#64748B] hover:text-[#F1F5F9]" : "text-[#94A3B8] hover:text-[#0F172A]")
+                  }`}>
+                    {sf.label}
+                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${
+                      statusFilter === sf.value
+                        ? (isDark ? "bg-[#00C6ED]/20 text-[#00C6ED]" : "bg-[#00B4D8]/15 text-[#00B4D8]")
+                        : (isDark ? "bg-[rgba(148,163,184,0.1)] text-[#64748B]" : "bg-[rgba(0,0,0,0.05)] text-[#94A3B8]")
+                    }`}>{statusCounts[sf.value]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="divide-y divide-[rgba(0,212,255,0.06)]">
+              {filteredFavorites.map((topic) => {
                 const status = getStatus(topic);
                 const sc = STATUS_CONFIG[status];
                 const key = favKey(topic);
@@ -559,6 +660,14 @@ export function FavoritesModal({ open, onClose, favorites, onRemove, onClear, on
                   </div>
                 );
               })}
+              {filteredFavorites.length === 0 && (
+                <div className="py-8 text-center">
+                  <p className={`text-sm ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
+                    {statusFilter === "all" ? "暂无灵感" : `暂无「${STATUS_CONFIG[statusFilter].label}」状态的选题`}
+                  </p>
+                </div>
+              )}
+            </div>
             </div>
           ) : (
             /* ── Calendar Tab (P2-6) ── */

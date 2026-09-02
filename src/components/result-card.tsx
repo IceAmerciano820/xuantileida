@@ -10,10 +10,12 @@ interface ResultCardProps {
   index: number;
   isFavorited: boolean;
   isDone: boolean;
+  isSelected?: boolean;
   onToggleFavorite: (topic: TopicAngle) => void;
   onGenerate: (topic: TopicAngle) => void;
   onIgnore: (key: string) => void;
   onMarkDone: (key: string) => void;
+  onToggleSelect?: (key: string) => void;
 }
 
 interface PlatformStyle {
@@ -129,7 +131,7 @@ function AngleCopyButton({ text }: { text: string }) {
   );
 }
 
-export function ResultCard({ topic, index, isFavorited, isDone, onToggleFavorite, onGenerate, onIgnore, onMarkDone }: ResultCardProps) {
+export function ResultCard({ topic, index, isFavorited, isDone, isSelected, onToggleFavorite, onGenerate, onIgnore, onMarkDone, onToggleSelect }: ResultCardProps) {
   const style = platformStyles[topic.source] || { ...defaultPlatform, icon: topic.source.charAt(0) };
   const formattedTime = formatPublishTime(topic.publishTime);
   const trendStyle = trendTagStyles[topic.trendTag] || trendTagStyles["平稳"];
@@ -160,12 +162,28 @@ export function ResultCard({ topic, index, isFavorited, isDone, onToggleFavorite
   return (
     <article className={`card-stagger group rounded-[14px] backdrop-blur-xl transition-all duration-300 ${
       isDone ? "opacity-50" : ""
-    } ${
+    } ${isSelected ? (isDark ? "ring-1 ring-[#00C6ED]/40" : "ring-1 ring-[#00B4D8]/40") : ""} ${
       isDark
         ? "glass-card-dark"
         : "glass-card-light"
     }`} style={{ animationDelay: `${index * 50}ms` }}>
       <div className="p-4 sm:p-5">
+        {/* Selection checkbox */}
+        {onToggleSelect && (
+          <div className="mb-2 flex items-center">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isSelected || false}
+                onChange={() => onToggleSelect(topic.url || topic.id)}
+                className="h-4 w-4 rounded border-[rgba(148,163,184,0.3)] bg-transparent text-[#00C6ED] focus:ring-[#00C6ED]/30"
+              />
+              <span className={`text-xs ${isDark ? "text-[#8B92A8]" : "text-gray-500"}`}>
+                加入批量生成
+              </span>
+            </label>
+          </div>
+        )}
         {/* Title row */}
         <div className="flex items-start gap-3">
           <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
