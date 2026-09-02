@@ -128,11 +128,60 @@ const PROMO_SIGNALS = [
   "关注公众号领取", "免费领取", "限时免费", "长按识别",
   "点击下载", "代购", "淘宝搜索", "闲鱼搜索",
   "咨询热线", "商务合作", "投稿邮箱",
+  // v2.6: 营销软文特征
+  "十大.*app", "十大.*平台", "一天.*元", "倍爆款率", "%存活率",
+  "月入.*万", "日入.*元", "躺赚", "零成本创业",
+  "保姆级教程", "建议收藏", "必看", "不容错过",
+];
+
+const PROMO_PATTERNS = [
+  /十大[\w\s]*(app|平台|软件|网站)/i,
+  /一天[\d.]+元/,
+  /[\d.]+倍爆款率/,
+  /[\d.]+%存活率/,
+  /月入[\d.]+万/,
+  /日入[\d.]+元/,
 ];
 
 function detectPromotional(title: string, snippet: string): boolean {
   const text = (title + " " + snippet).toLowerCase();
-  return PROMO_SIGNALS.some((sig) => text.includes(sig.toLowerCase()));
+  // Check simple signals
+  if (PROMO_SIGNALS.some((sig) => text.includes(sig.toLowerCase()))) return true;
+  // Check regex patterns
+  if (PROMO_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  return false;
+}
+
+/* ── v2.6: Domain extraction + domain-based dedup ── */
+
+function extractDomain(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+// v2.6: 同域名最多保留 MAX_PER_DOMAIN 条
+const MAX_PER_DOMAIN = 3;
+
+function deduplicateByDomain<T extends { url: string }>(items: T[]): T[] {
+  const domainCount = new Map<string, number>();
+  const result: T[] = [];
+  for (const item of items) {
+    const domain = extractDomain(item.url);
+    if (!domain) {
+      result.push(item);
+      continue;
+    }
+    const count = domainCount.get(domain) || 0;
+    if (count < MAX_PER_DOMAIN) {
+      result.push(item);
+      domainCount.set(domain, count + 1);
+    }
+  }
+  return result;
 }
 
 /* ── Platform detection ── */
@@ -252,26 +301,51 @@ function generateFallbackAnalysis(title: string, keyword: string, heatScore: num
   else if (heatScore >= 55 && heatScore < 75) trendTag = "潜力黑马";
   else if (heatScore < 30) trendTag = "降温";
 
+  // v2.6: 更具体的角度，避免万能句式
   let angles: string[];
   if (lowerTitle.includes("教程") || lowerTitle.includes("如何") || lowerTitle.includes("怎么")) {
-    angles = [`自己试了一遍${keyword}，把踩的坑整理出来`, `拍一支"新手最容易搞错的几个点"短视频`];
+    angles = [
+      `实测${keyword}完整流程，记录每个步骤的真实耗时和踩坑点`,
+      `拍一支"${keyword}新手最容易搞错的3个点"短视频`,
+      `对比官方教程和实际操作，找出那些没写清楚的隐藏步骤`,
+    ];
   } else if (lowerTitle.includes("排行") || lowerTitle.includes("推荐") || lowerTitle.includes("测评")) {
-    angles = [`自费买了5款热门${keyword}，逐个实测告诉你哪个值`, `做一期红黑榜，踩雷的和真香的都列出来`];
+    angles = [
+      `自费买了5款热门${keyword}，逐个实测告诉你哪个值`,
+      `做一期红黑榜，踩雷的和真香的都列出来`,
+      `从价格/效果/售后三个维度横向对比，给出不同预算的选择`,
+    ];
   } else if (lowerTitle.includes("趋势") || lowerTitle.includes("未来") || lowerTitle.includes("预测")) {
-    angles = [`整理了近半年的数据，${keyword}的变化比你想的大`, `跟3个从业者聊了聊，他们对${keyword}的看法不太一样`];
+    angles = [
+      `整理了近半年的数据，${keyword}的变化比你想的大`,
+      `跟3个从业者聊了聊，他们对${keyword}的看法不太一样`,
+      `从政策/技术/市场三个层面分析${keyword}的真实走向`,
+    ];
   } else {
-    angles = [`从一个普通用户的角度聊聊${keyword}这件事`, `花了点时间调研，发现跟之前想的不太一样`, `身边朋友的真实反馈，有好有坏都说`];
+    // v2.6: 避免"从一个普通用户的角度"这类万能句式
+    angles = [
+      `围绕「${keyword}」的最新动态，梳理事件来龙去脉和关键争议点`,
+      `找3-5个真实用户案例，讲讲他们使用${keyword}前后的变化`,
+      `针对${keyword}的常见误解，用实际数据或体验来澄清`,
+    ];
   }
 
   const relatedWords = [
     `${keyword}实测`, `${keyword}避坑`, `${keyword}怎么选`,
-    `${keyword}真实体验`, `${keyword}对比`,
-  ].slice(0, 5);
+    `${keyword}真实体验`, `${keyword}对比`, `${keyword}推荐`,
+  ].slice(0, 6);
+
+  // v2.6: 更具体的评分理由，避免万能空话
+  const scoreReason = heatScore >= 70
+    ? `近期讨论集中，有多个具体事件/产品可切入，适合做深度内容`
+    : heatScore >= 50
+    ? `有一定讨论度但角度还没被写烂，找个独特切入点还有机会`
+    : `热度不算高，竞争小，适合小众赛道博主先占位积累`;
 
   return {
     trendTag,
     score: Math.min(95, Math.max(20, heatScore + Math.round(Math.random() * 15 - 5))),
-    scoreReason: heatScore >= 60 ? `讨论的人多，但角度同质化严重，得找到不一样的切入点才好做` : `热度一般，不过竞争也小，适合小众赛道的博主先占位`,
+    scoreReason,
     angles,
     relatedWords,
     riskLevel: "低",
@@ -299,15 +373,17 @@ ${topicsDesc}
 规则：
 - trendTag：暴涨=已爆火讨论度极高；潜力黑马=热度未顶但快速上涨适合提前布局；平稳=稳定讨论；降温=热度下降
 - score：0-100，综合=讨论热度×0.4+普通人可创作性×0.3+传播潜力×0.3
-- scoreReason：1句话说人话，像编辑给作者的建议。例如"讨论度高但普通人不好拍，适合有相关经历的人做""热度一般但切入点独特，适合小众赛道博主"。禁止"该话题具有较高的时效性与传播潜力"式公文腔
-- angles：2-3个具体可操作的选题切入点，像编辑报选题一样写。例如"我试了一周XX，踩了3个坑""花50块vs花500块，差距到底在哪""问了10个朋友，他们的回答让我意外"。禁止"深入探讨XX的发展趋势""全方位解析XX"这种假大空角度
-- relatedWords：3-8个相关长尾搜索词，适合做标题和标签
+- scoreReason：1句话说人话，像编辑给作者的建议。必须结合该条热点的具体事实（标题/摘要中的实体、数字、事件）来写。例如"XX品牌这次翻车涉及3款产品，讨论度高但普通人不好拍，适合有相关经历的人做""这个政策影响的是XX群体，热度一般但切入点独特，适合小众赛道博主"。禁止"该话题具有较高的时效性与传播潜力"式公文腔。禁止"讨论的人多，但角度同质化严重""热度一般，不过竞争也小"这类万能空话。
+- angles：3个具体可操作的选题切入点，像编辑报选题一样写。必须结合该条热点的具体事实来写，3个角度方向要不同（如：亲测体验型/观点评论型/干货教程型/反差争议型，至少覆盖2种）。例如"我试了一周XX，踩了3个坑""花50块vs花500块，差距到底在哪""问了10个朋友，他们的回答让我意外"。禁止"深入探讨XX的发展趋势""全方位解析XX"这种假大空角度。禁止"从一个普通用户的视角聊聊这件事""自己试了一遍XX，把踩的坑整理出来"这类万能句式。每条angles必须包含该热点的具体实体/事件/数字。
+- relatedWords：5-7个相关长尾搜索词，适合做标题和标签（必填，不允许为空）
 - riskLevel：低=安全；中=需注意措辞；高=涉及敏感话题需谨慎
 
-【去AI味规则】
+【去AI味规则 - 严格执行】
 - 禁止使用"赋能、助力、打造、构建、深度探讨、全方位、多维度、显著、持续优化、无缝、直观、强大、革命性、颠覆性"等AI高频词
 - 禁止"首先/其次/最后"的机械结构
-- 所有输出用口语化表达，像真人在说话`;
+- 禁止在同批结果中复用句式：每条angles和scoreReason必须独特，禁止"从一个普通用户的视角聊聊""自己试了一遍XX"这类万能句式在不同条目中重复出现
+- 所有输出用口语化表达，像真人在说话
+- 每条angles必须包含该热点的具体实体/事件/数字，不允许出现可套用到任何话题的空泛角度`;
 
   try {
     const response = await llmClient.invoke(
@@ -334,6 +410,13 @@ ${topicsDesc}
           return parsed.map((item: Record<string, unknown>): LLMAnalysisResult => {
             const validTrendTags: TrendTag[] = ["暴涨", "平稳", "降温", "潜力黑马"];
             const validRiskLevels: RiskLevel[] = ["低", "中", "高"];
+            const rawRelatedWords = Array.isArray(item.relatedWords)
+              ? item.relatedWords.filter((w: unknown): w is string => typeof w === "string").slice(0, 8)
+              : [];
+            // v2.6: 确保 relatedWords 至少有5个
+            const relatedWords = rawRelatedWords.length >= 5
+              ? rawRelatedWords
+              : [...rawRelatedWords, ...generateRelatedWordsFromTitle(String(item.title || ""))].slice(0, 7);
             return {
               trendTag: validTrendTags.includes(item.trendTag as TrendTag) ? (item.trendTag as TrendTag) : "平稳",
               score: typeof item.score === "number" ? Math.min(100, Math.max(0, Math.round(item.score))) : 50,
@@ -341,9 +424,7 @@ ${topicsDesc}
               angles: Array.isArray(item.angles)
                 ? item.angles.filter((a: unknown): a is string => typeof a === "string").slice(0, 3)
                 : [],
-              relatedWords: Array.isArray(item.relatedWords)
-                ? item.relatedWords.filter((w: unknown): w is string => typeof w === "string").slice(0, 8)
-                : [],
+              relatedWords,
               riskLevel: validRiskLevels.includes(item.riskLevel as RiskLevel) ? (item.riskLevel as RiskLevel) : "低",
             };
           });
@@ -358,6 +439,26 @@ ${topicsDesc}
 
   // Fallback
   return topics.map((t) => generateFallbackAnalysis(t.title, keyword, t.heatScore));
+}
+
+// v2.6: 从标题生成相关长尾词
+function generateRelatedWordsFromTitle(title: string): string[] {
+  const words: string[] = [];
+  // 提取标题中的关键词组合
+  const segments = title.split(/[\s,，。！？、]+/).filter((s) => s.length >= 2);
+  for (const seg of segments.slice(0, 3)) {
+    words.push(seg);
+    if (seg.length > 4) {
+      words.push(seg.slice(0, 4) + "怎么样");
+    }
+  }
+  // 添加通用后缀
+  const suffixes = ["推荐", "测评", "教程", "攻略", "避坑"];
+  const mainKeyword = segments[0] || "这个";
+  for (const suffix of suffixes.slice(0, 3)) {
+    words.push(mainKeyword + suffix);
+  }
+  return [...new Set(words)].slice(0, 7);
 }
 
 async function analyzeAllTopics(
@@ -427,12 +528,14 @@ export async function POST(request: NextRequest) {
       `${trimmedKeyword} 热点 热门话题 最新`,
       `${trimmedKeyword} 微博 知乎 讨论`,
       `${trimmedKeyword} 抖音 小红书 爆款`,
+      `${trimmedKeyword} 体验 测评 分享`,
+      `${trimmedKeyword} 教程 攻略 技巧`,
     ];
 
     const searchPromises = searchQueries.map((query, idx) =>
       searchClient.advancedSearch(query, {
         timeRange: resolvedTimeRange,
-        count: 20,
+        count: 25,
         needSummary: false,
       }).catch((err: unknown) => {
         console.error(`Search failed for query ${idx}:`, err);
@@ -501,8 +604,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    allItems.sort((a, b) => b.heatScore - a.heatScore);
-    const topItems = allItems.slice(0, maxCount);
+    allItems.sort((a, b) => {
+      // v2.6:  promotional items go to bottom
+      if (a.isPromotional !== b.isPromotional) return a.isPromotional ? 1 : -1;
+      return b.heatScore - a.heatScore;
+    });
+
+    // v2.6: 同域名去重（每域名最多3条），营销内容降级但不丢弃
+    const nonPromoItems = allItems.filter((it) => !it.isPromotional);
+    const promoItems = allItems.filter((it) => it.isPromotional);
+    const dedupedNonPromo = deduplicateByDomain(nonPromoItems);
+    // 营销内容只保留前2条作为补充
+    const dedupedPromo = promoItems.slice(0, 2);
+    const combinedItems = [...dedupedNonPromo, ...dedupedPromo];
+    const topItems = combinedItems.slice(0, maxCount);
 
     if (topItems.length === 0) {
       const timeLabels: Record<string, string> = { "6h": "近6小时", "1d": "近24小时", "7d": "近7天" };
