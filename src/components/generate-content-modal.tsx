@@ -47,18 +47,23 @@ export function GenerateContentModal({ open, onClose, title, snippet }: Generate
 
   const buildPrompt = useCallback(() => {
     if (mode === "titles") {
-      return `基于以下热点话题，生成5个吸引眼球的标题候选，包含悬念型、数字型、痛点型等不同风格。\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请以编号列表格式输出5个标题，每个标题简洁有力，适合自媒体传播。`;
+      return `基于以下热点话题，生成5个吸引眼球的标题候选。要求：口语化、带具体信息（数字/反差/真实疑问），禁止"3个技巧让你XX"式模板标题批量出现，每个标题风格不同。\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请直接输出5个标题，编号列表格式。`;
     }
     if (mode === "tags") {
-      return `基于以下热点话题，生成10-15个相关的内容标签（hashtag），涵盖话题核心、受众群体、内容类型等维度。\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请以逗号分隔的格式输出所有标签，适合直接复制使用。`;
+      return `基于以下热点话题，生成10-15个相关的内容标签（hashtag），混合大词和长尾词，不要全是流量大词。\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请以逗号分隔的格式输出所有标签。`;
     }
     // Content mode
     const typeMap = {
-      xhs: "小红书笔记（标题+正文+标签，风格活泼有emoji，适合种草/分享）",
-      douyin: "抖音口播脚本（开头hook+正文+结尾引导关注，口语化表达）",
-      wechat: "公众号深度文章（标题+导语+正文段落，深度分析风格）",
+      xhs: "小红书笔记",
+      douyin: "抖音口播脚本",
+      wechat: "公众号文章",
     };
-    return `基于以下热点话题，生成一篇${typeMap[contentType]}。\n语气风格：${tone}\n目标字数：约${wordCount}字\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请直接输出完整内容，不要添加额外说明。`;
+    const styleMap = {
+      xhs: "像真实用户的使用体验分享，不像品牌广告稿",
+      douyin: "像真人在镜头前说话，句子短，适合念出来",
+      wechat: "有个人观点和经验之谈，不写百科词条",
+    };
+    return `基于以下热点话题，生成一篇${typeMap[contentType]}。\n语气风格：${tone}\n目标字数：约${wordCount}字\n平台要求：${styleMap[contentType]}\n\n重要：开头直接说具体的事，不要铺垫背景。禁止使用\"赋能、助力、打造、构建、深度、全方位\"等AI高频词。禁止\"在当今\"\"随着\"\"近年来\"等套话开头。用具体数字和场景替代空形容。结尾说完就停，不升华不展望。\n\n热点标题：${title}\n内容摘要：${snippet}\n\n请直接输出完整内容，不要添加额外说明。`;
   }, [mode, contentType, tone, wordCount, title, snippet]);
 
   const handleGenerate = useCallback(async () => {

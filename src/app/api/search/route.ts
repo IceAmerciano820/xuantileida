@@ -254,24 +254,24 @@ function generateFallbackAnalysis(title: string, keyword: string, heatScore: num
 
   let angles: string[];
   if (lowerTitle.includes("教程") || lowerTitle.includes("如何") || lowerTitle.includes("怎么")) {
-    angles = [`以「${keyword}新手指南」为主题，制作一篇保姆级实操教程`, `拍摄一支「${keyword}避坑指南」短视频，分享常见误区`];
+    angles = [`自己试了一遍${keyword}，把踩的坑整理出来`, `拍一支"新手最容易搞错的几个点"短视频`];
   } else if (lowerTitle.includes("排行") || lowerTitle.includes("推荐") || lowerTitle.includes("测评")) {
-    angles = [`做一期「${keyword}红黑榜」对比评测内容`, `以个人体验为切入点，分享真实使用感受`];
+    angles = [`自费买了5款热门${keyword}，逐个实测告诉你哪个值`, `做一期红黑榜，踩雷的和真香的都列出来`];
   } else if (lowerTitle.includes("趋势") || lowerTitle.includes("未来") || lowerTitle.includes("预测")) {
-    angles = [`深度分析「${keyword}未来趋势」，结合数据做预判`, `制作「行业现状」信息图/长图内容`];
+    angles = [`整理了近半年的数据，${keyword}的变化比你想的大`, `跟3个从业者聊了聊，他们对${keyword}的看法不太一样`];
   } else {
-    angles = [`围绕「${keyword}」制作一篇观点鲜明的评论文章`, `以个人经历切入，分享引发共鸣的故事`, `做一期「${keyword}入门到进阶」系列内容规划`];
+    angles = [`从一个普通用户的角度聊聊${keyword}这件事`, `花了点时间调研，发现跟之前想的不太一样`, `身边朋友的真实反馈，有好有坏都说`];
   }
 
   const relatedWords = [
-    `${keyword}教程`, `${keyword}推荐`, `${keyword}避坑`,
-    `${keyword}攻略`, `${keyword}测评`, `${keyword}入门`,
+    `${keyword}实测`, `${keyword}避坑`, `${keyword}怎么选`,
+    `${keyword}真实体验`, `${keyword}对比`,
   ].slice(0, 5);
 
   return {
     trendTag,
     score: Math.min(95, Math.max(20, heatScore + Math.round(Math.random() * 15 - 5))),
-    scoreReason: `综合热度指数${heatScore}，讨论度${heatScore >= 60 ? "较高" : "一般"}，适合${trendTag === "潜力黑马" ? "提前布局" : "跟进创作"}`,
+    scoreReason: heatScore >= 60 ? `讨论的人多，但角度同质化严重，得找到不一样的切入点才好做` : `热度一般，不过竞争也小，适合小众赛道的博主先占位`,
     angles,
     relatedWords,
     riskLevel: "低",
@@ -299,15 +299,20 @@ ${topicsDesc}
 规则：
 - trendTag：暴涨=已爆火讨论度极高；潜力黑马=热度未顶但快速上涨适合提前布局；平稳=稳定讨论；降温=热度下降
 - score：0-100，综合=讨论热度×0.4+普通人可创作性×0.3+传播潜力×0.3
-- scoreReason：1句话，说明为什么给这个分
-- angles：2-3个具体可操作的创作切入角度（禁止复述热点事件，要告诉创作者具体怎么切入）
+- scoreReason：1句话说人话，像编辑给作者的建议。例如"讨论度高但普通人不好拍，适合有相关经历的人做""热度一般但切入点独特，适合小众赛道博主"。禁止"该话题具有较高的时效性与传播潜力"式公文腔
+- angles：2-3个具体可操作的选题切入点，像编辑报选题一样写。例如"我试了一周XX，踩了3个坑""花50块vs花500块，差距到底在哪""问了10个朋友，他们的回答让我意外"。禁止"深入探讨XX的发展趋势""全方位解析XX"这种假大空角度
 - relatedWords：3-8个相关长尾搜索词，适合做标题和标签
-- riskLevel：低=安全；中=需注意措辞；高=涉及敏感话题需谨慎`;
+- riskLevel：低=安全；中=需注意措辞；高=涉及敏感话题需谨慎
+
+【去AI味规则】
+- 禁止使用"赋能、助力、打造、构建、深度探讨、全方位、多维度、显著、持续优化、无缝、直观、强大、革命性、颠覆性"等AI高频词
+- 禁止"首先/其次/最后"的机械结构
+- 所有输出用口语化表达，像真人在说话`;
 
   try {
     const response = await llmClient.invoke(
       [
-        { role: "system", content: "你是资深内容策划专家。严格输出JSON数组，不要输出markdown代码块标记，不要额外解释文字。确保JSON格式正确。" },
+        { role: "system", content: "你是资深内容策划专家，说人话，不说AI腔。严格输出JSON数组，不要输出markdown代码块标记，不要额外解释文字。确保JSON格式正确。所有文字用口语化表达，像真人在说话。" },
         { role: "user", content: prompt },
       ],
       { model: "doubao-seed-2-0-mini-260215", temperature: 0.7 }
@@ -332,7 +337,7 @@ ${topicsDesc}
             return {
               trendTag: validTrendTags.includes(item.trendTag as TrendTag) ? (item.trendTag as TrendTag) : "平稳",
               score: typeof item.score === "number" ? Math.min(100, Math.max(0, Math.round(item.score))) : 50,
-              scoreReason: typeof item.scoreReason === "string" ? item.scoreReason.slice(0, 80) : "综合评估中等",
+              scoreReason: typeof item.scoreReason === "string" ? item.scoreReason.slice(0, 80) : "热度中等，适合找个独特角度切入",
               angles: Array.isArray(item.angles)
                 ? item.angles.filter((a: unknown): a is string => typeof a === "string").slice(0, 3)
                 : [],
@@ -549,7 +554,7 @@ export async function POST(request: NextRequest) {
         trendTag: analysis.trendTag,
         score: analysis.score,
         scoreReason: analysis.scoreReason,
-        angles: analysis.angles.length > 0 ? analysis.angles : ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+        angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
         relatedWords: analysis.relatedWords,
         riskLevel: analysis.riskLevel,
         isPromotional: item.isPromotional,
@@ -651,7 +656,7 @@ function handleSSEStream(
             trendTag: analysis.trendTag,
             score: analysis.score,
             scoreReason: analysis.scoreReason,
-            angles: analysis.angles.length > 0 ? analysis.angles : ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+            angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
             relatedWords: analysis.relatedWords,
             riskLevel: analysis.riskLevel,
             isPromotional: item.isPromotional,
@@ -711,7 +716,7 @@ function handleSSEStream(
               trendTag: analysis.trendTag,
               score: analysis.score,
               scoreReason: analysis.scoreReason,
-              angles: analysis.angles.length > 0 ? analysis.angles : ["围绕该话题制作一篇深度分析内容", "以个人视角切入分享独特观点"],
+              angles: analysis.angles.length > 0 ? analysis.angles : [`从一个普通用户的视角聊聊这件事`, `花点时间调研，说说跟之前想的不太一样的地方`],
               relatedWords: analysis.relatedWords,
               riskLevel: analysis.riskLevel,
               isPromotional: item.isPromotional,
