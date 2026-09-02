@@ -1,0 +1,29 @@
+{
+  "name": "选题雷达",
+  "short_name": "选题雷达",
+  "description": "内容创作者的热点选题发现工具，全网热点一键捕捉",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0B0F1A",
+  "background_color": "#0B0F1A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

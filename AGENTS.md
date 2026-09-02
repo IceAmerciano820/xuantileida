@@ -79,6 +79,9 @@
   - `src/components/radar-icon.tsx` - 雷达图标组件（Logo图标、扫描动画、脉冲点、背景装饰）
   - `src/components/landing-view.tsx` - 首屏默认视图（今日热点速览 + 赛道探索卡片，自动加载热点预览）
   - `src/components/radar-landing-page.tsx` - 雷达着陆页（全屏雷达扫描动画，首次访问展示，sessionStorage控制）
+  - `src/components/daily-briefing.tsx` - 每日选题简报组件（自动扫描监控关键词、进度展示、日期切换回看）
+  - `src/components/monitor-keywords-modal.tsx` - 监控关键词管理弹窗（增删关键词、最多5个）
+  - `src/components/pwa-registrar.tsx` - PWA Service Worker 注册组件
   - `src/components/search-input.tsx` - 搜索输入框组件
   - `src/components/result-card.tsx` - 热点结果卡片组件
   - `src/components/loading-skeleton.tsx` - 加载骨架屏（含SSE进度条）
@@ -93,3 +96,11 @@
 
 - **Web Search**：`coze-coding-dev-sdk` 的 `SearchClient` + `advancedSearch`，用于搜索全网热点
 - **LLM**：`coze-coding-dev-sdk` 的 `LLMClient` + `invoke`，用于生成内容创作角度建议（模型：doubao-seed-2-0-mini-260215）
+
+### PWA 配置
+
+- `public/manifest.json` - PWA 清单（应用名、主题色、图标）
+- `public/sw.js` - Service Worker（静态资源缓存、API不缓存）
+- `public/icons/icon.svg` - 雷达图标（SVG）
+- `src/hooks/use-pwa-install.ts` - PWA 安装引导 Hook（beforeinstallprompt + iOS检测）
+- `src/app/layout.tsx` - viewport + appleWebApp 配置

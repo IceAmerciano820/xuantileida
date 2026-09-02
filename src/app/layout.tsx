@@ -1,5 +1,12 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
+
+export const viewport: Viewport = {
+  themeColor: '#0B0F1A',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: '选题雷达 - 内容创作者的热点选题工具',
@@ -14,6 +21,12 @@ export const metadata: Metadata = {
     '热点话题',
     '创作灵感',
   ],
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: '选题雷达',
+  },
 };
 
 export default function RootLayout({

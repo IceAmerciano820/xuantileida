@@ -13,6 +13,9 @@ import { FavoritesModal } from "@/components/favorites-modal";
 import { RadarIcon, RadarBackground } from "@/components/radar-icon";
 import { LandingView } from "@/components/landing-view";
 import { RadarLandingPage } from "@/components/radar-landing-page";
+import { MonitorKeywordsModal } from "@/components/monitor-keywords-modal";
+import { DailyBriefing } from "@/components/daily-briefing";
+import { PWARegistrar } from "@/components/pwa-registrar";
 
 export type FavoriteStatus = "draft" | "scheduled" | "published";
 export type TrendTag = "暴涨" | "平稳" | "降温" | "潜力黑马";
@@ -77,7 +80,7 @@ const DONE_TOPICS_KEY = "hotspot_done_topics";
 const MAX_HISTORY = 10;
 const REQUEST_COUNT = 30;
 const CACHE_TTL = 5 * 60 * 1000;
-const APP_VERSION = "v2.3.0";
+const APP_VERSION = "v2.4.0";
 const FIRST_SCREEN_TIMEOUT_MS = 30000;
 const FULL_TIMEOUT_MS = 60000;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -143,6 +146,10 @@ function InnerApp() {
   const abortRef = useRef<AbortController | null>(null);
   // v2.2: SSE progress state
   const [sseProgress, setSseProgress] = useState<{ completed: number; total: number } | null>(null);
+  // v2.4: Monitor keywords & daily briefing
+  const [monitoredKeywords, setMonitoredKeywords] = useState<string[]>([]);
+  const [showMonitorModal, setShowMonitorModal] = useState(false);
+  const [showBriefing] = useState(true);
   // v2.2: Landing page state
   const [showLanding, setShowLanding] = useState(false);
 
@@ -159,6 +166,12 @@ function InnerApp() {
   const handleLandingEnter = useCallback(() => {
     sessionStorage.setItem("landing_seen", "1");
     setShowLanding(false);
+  }, []);
+
+  // v2.4: Save monitored keywords
+  const handleSaveMonitorKeywords = useCallback((keywords: string[]) => {
+    setMonitoredKeywords(keywords);
+    saveToStorage("hotspot_monitored_keywords", keywords);
   }, []);
 
   // Load from localStorage with P0-2 migration (dedup by URL)
@@ -179,6 +192,9 @@ function InnerApp() {
     setIgnoredTopics(new Set(ignored));
     const done = loadFromStorage<string[]>(DONE_TOPICS_KEY, []);
     setDoneTopics(new Set(done));
+    // v2.4: Load monitored keywords
+    const mk = loadFromStorage<string[]>("hotspot_monitored_keywords", []);
+    setMonitoredKeywords(mk);
   }, []);
 
   // Close dropdowns on outside click
@@ -843,6 +859,14 @@ function InnerApp() {
               灵感库{favorites.length > 0 && <span className="text-[#00D4FF]">({favorites.length})</span>}
             </button>
 
+            {/* v2.4: Monitor keywords button */}
+            <button type="button" onClick={() => setShowMonitorModal(true)} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-all ${
+              isDark ? "border-[rgba(0,212,255,0.12)] bg-[#12162A] text-[#8B92A8] hover:border-[#00D4FF]/30 hover:text-white" : "border-gray-200 bg-white text-gray-600 hover:border-[#00B4D8]/30 hover:text-gray-900"
+            }`}>
+              <span className="text-sm leading-none">📡</span>
+              我的监控
+            </button>
+
             {/* Export */}
             {hasResults && (
               <div className="relative" ref={exportRef}>
@@ -967,7 +991,17 @@ function InnerApp() {
 
         {/* Initial - Landing View with hot topics + track exploration */}
         {!loading && !results && !networkError && (
-          <LandingView onSearch={(kw) => { setKeyword(kw); doSearch(kw, timeRange, REQUEST_COUNT); }} />
+          <div className="space-y-6">
+            {/* v2.4: Daily Briefing */}
+            {showBriefing && (
+              <DailyBriefing
+                monitoredKeywords={monitoredKeywords}
+                onSearch={(kw) => { setKeyword(kw); doSearch(kw, timeRange, REQUEST_COUNT); }}
+                onOpenMonitor={() => setShowMonitorModal(true)}
+              />
+            )}
+            <LandingView onSearch={(kw) => { setKeyword(kw); doSearch(kw, timeRange, REQUEST_COUNT); }} />
+          </div>
         )}
 
         {/* Results */}
@@ -1306,6 +1340,13 @@ function InnerApp() {
         onUpdateTags={handleUpdateTags}
         onImport={handleImportFavorites}
       />
+      <MonitorKeywordsModal
+        open={showMonitorModal}
+        onClose={() => setShowMonitorModal(false)}
+        keywords={monitoredKeywords}
+        onSave={handleSaveMonitorKeywords}
+      />
+      <PWARegistrar />
     </div>
     </>
   );
